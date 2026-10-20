@@ -438,6 +438,10 @@ def main(argumentos=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except PermissionError as erro:
+        print(f"\nERRO: não consegui gravar {erro.filename}.\n"
+              "Se esse arquivo estiver aberto no Excel, feche-o e rode de novo.")
+        sys.exit(1)
     except (FileNotFoundError, ValueError) as erro:
         print(f"\nERRO: {erro}")
         sys.exit(1)
