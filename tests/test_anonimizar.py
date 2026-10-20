@@ -19,14 +19,14 @@ def escrever_csv(caminho, linhas, codificacao="utf-8-sig"):
 # --- leitura.py -------------------------------------------------------------
 
 def test_normalizar_nome_tira_acentos_maiusculas_e_espacos():
-    assert normalizar_nome("  Anna Júlia   Barreto ") == "ANNA JULIA BARRETO"
+    assert normalizar_nome("  José   da Conceição ") == "JOSE DA CONCEICAO"
     assert normalizar_nome("CAUÃ") == "CAUA"
     assert normalizar_nome(None) == ""
 
 
 def test_normalizar_nome_nao_junta_grafias_diferentes():
     # Isso é trabalho da aba Apelidos, não de correspondência automática
-    assert normalizar_nome("EMILY SANTOS") != normalizar_nome("EMILLY SANTOS")
+    assert normalizar_nome("JOANA SOUSA") != normalizar_nome("JOANNA SOUSA")
 
 
 def test_limpar_cabecalho_remove_simbolo_do_argus():

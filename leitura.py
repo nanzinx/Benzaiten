@@ -21,9 +21,9 @@ def normalizar_nome(nome):
     Deixa um nome pronto para comparação entre sistemas.
 
     Remove acentos, passa para maiúsculas e tira espaços extras.
-    Exemplo: "  Anna Júlia  Barreto " -> "ANNA JULIA BARRETO"
+    Exemplo: "  José  da Conceição " -> "JOSE DA CONCEICAO"
 
-    Isso NÃO é correspondência por semelhança: "EMILY" e "EMILLY"
+    Isso NÃO é correspondência por semelhança: "JOANA" e "JOANNA"
     continuam diferentes e precisam ser ligados na aba Apelidos.
     """
     if nome is None:

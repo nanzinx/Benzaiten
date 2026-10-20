@@ -176,7 +176,7 @@ def ler_entradas(pasta):
 # ---------------------------------------------------------------------------
 
 def limpar_supervisor(texto):
-    """'(1) GABRIEL NASCIMENTO DA SILVA, (2) OUTRO' -> 'GABRIEL NASCIMENTO DA SILVA'."""
+    """'(1) FULANO DE TAL, (2) OUTRO' -> 'FULANO DE TAL'."""
     primeiro = str(texto or "").split(",")[0].strip()
     if primeiro.startswith("(") and ")" in primeiro:
         primeiro = primeiro.split(")", 1)[1].strip()
@@ -184,7 +184,7 @@ def limpar_supervisor(texto):
 
 
 def nome_da_equipe(supervisor):
-    """A equipe é o primeiro nome do supervisor: 'GABRIEL NASCIMENTO' -> 'Gabriel'."""
+    """A equipe é o primeiro nome do supervisor: 'FULANO DE TAL' -> 'Fulano'."""
     partes = limpar_supervisor(supervisor).split()
     return partes[0].capitalize() if partes else ""
 
@@ -207,7 +207,7 @@ def atualizar_cadastro(linhas_exportacao, arquivo=ARQUIVO_CADASTRO):
         apelidos = wb.active
         apelidos.title = "Apelidos"
         apelidos.append(["Nome no sistema", "Nome oficial"])
-        apelidos.append(["(exemplo) EMILY SANTOS ARAUJO", "(exemplo) EMILLY SANTOS ARAUJO"])
+        apelidos.append(["(exemplo) JOANA SOUSA", "(exemplo) JOANNA SOUSA"])
         apelidos.column_dimensions["A"].width = 45
         apelidos.column_dimensions["B"].width = 45
 

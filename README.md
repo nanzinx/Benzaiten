@@ -191,7 +191,7 @@ As regras ficam no início do `relatorio_ura.py` (etapas, prefixos dos robôs et
   A equipe é o primeiro nome do supervisor. Quem não está ATIVO é ignorado.
 - Aba **Apelidos**: preenchida por você quando o nome é diferente entre os sistemas.
   Coluna A = nome como aparece no sistema; coluna B = nome oficial (o do Argus).
-  Ex.: `EMILY SANTOS ARAUJO` → `EMILLY SANTOS ARAUJO`.
+  Ex.: `JOANA SOUSA` (como aparece na tarifação) → `JOANNA SOUSA` (como está no Argus).
   Acentos, maiúsculas e espaços extras já são ignorados; não há ligação automática
   por semelhança.
 

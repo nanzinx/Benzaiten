@@ -43,8 +43,8 @@ def test_converter_tempo_e_data():
 # --- Cadastro ----------------------------------------------------------------
 
 def test_equipe_e_o_primeiro_nome_do_supervisor():
-    assert ru.limpar_supervisor("(1) MARIA DE FÁTIMA SOUZA, (2) OUTRO") == "MARIA DE FÁTIMA SOUZA"
-    assert ru.nome_da_equipe("(1) MARIA DE FÁTIMA SOUZA") == "Maria"
+    assert ru.limpar_supervisor("(1) JOANA DE SÁ PRADO, (2) OUTRO") == "JOANA DE SÁ PRADO"
+    assert ru.nome_da_equipe("(1) JOANA DE SÁ PRADO") == "Joana"
 
 
 def test_atualizar_cadastro_mantem_os_apelidos(tmp_path):
