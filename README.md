@@ -162,6 +162,14 @@ python argus_api.py --diagnostico
 Ele mostra os grupos operacionais e os **nomes** dos campos que o Argus devolve
 (sem mostrar os dados). Se aparecer `NENHUM` ou `None` em alguma linha, me mande essa saída.
 
+### Se aparecer "Não consegui conectar ao Argus"
+
+- O script já tenta sozinho um modo compatível com servidores mais antigos
+  (o certificado do Argus continua sendo verificado).
+- Se mesmo assim não conectar, o endereço da API da Benconsig pode ser outro.
+  Pergunte ao suporte do Argus qual é e escreva-o (uma linha só) em
+  `config\argus_url.txt`, por exemplo: `https://argus4com.com.br:23001/apiargus`.
+
 ### Todo dia
 
 ```

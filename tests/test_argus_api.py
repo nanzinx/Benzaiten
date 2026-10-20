@@ -187,3 +187,49 @@ def test_ultimo_dia_util_e_o_padrao(api_falsa, tmp_path, monkeypatch):
     ap.main([])
     esperado = ap.dia_util_anterior(date.today()).strftime("%Y-%m-%d")
     assert any(esperado in p.name for p in (tmp_path / "entrada").iterdir())
+
+
+# --- Conexão (sem internet: a abertura da conexão é simulada) ----------------
+
+def test_endereco_padrao_e_endereco_do_arquivo(tmp_path):
+    arquivo = tmp_path / "argus_url.txt"
+    assert ap.url_base(arquivo) == "https://argus.app.br/apiargus"
+    arquivo.write_text("https://argus4com.com.br:23001/apiargus/\n", encoding="utf-8")
+    assert ap.url_base(arquivo) == "https://argus4com.com.br:23001/apiargus"
+
+
+def test_falha_ssl_tenta_de_novo_no_modo_compativel(monkeypatch):
+    contextos = []
+
+    def abrir_falso(requisicao, contexto):
+        contextos.append(contexto)
+        if len(contextos) == 1:
+            raise ap.urllib.error.URLError(ap.ssl.SSLError("SSLV3_ALERT_HANDSHAKE_FAILURE"))
+        return {"codStatus": 1, "grupos": []}
+
+    monkeypatch.setattr(ap, "abrir", abrir_falso)
+    assert ap.chamar_api("cmd/listargrupos", {}, "token-falso") == {"codStatus": 1, "grupos": []}
+    assert len(contextos) == 2
+    assert contextos[1].verify_mode == ap.ssl.CERT_REQUIRED  # certificado continua verificado
+
+
+def test_sem_internet_nao_tenta_de_novo_e_explica(monkeypatch):
+    chamadas = []
+
+    def abrir_falso(requisicao, contexto):
+        chamadas.append(1)
+        raise ap.urllib.error.URLError("sem rede")
+
+    monkeypatch.setattr(ap, "abrir", abrir_falso)
+    with pytest.raises(ap.ErroArgus, match="argus_url.txt"):
+        ap.chamar_api("cmd/listargrupos", {}, "token-falso")
+    assert len(chamadas) == 1
+
+
+def test_token_recusado_vira_mensagem_clara(monkeypatch):
+    def abrir_falso(requisicao, contexto):
+        raise ap.urllib.error.HTTPError(requisicao.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(ap, "abrir", abrir_falso)
+    with pytest.raises(ap.ErroArgus, match="token"):
+        ap.chamar_api("cmd/listargrupos", {}, "token-falso")

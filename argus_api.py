@@ -26,9 +26,11 @@ import argparse
 import csv
 import json
 import os
+import ssl
 import sys
 import urllib.error
 import urllib.request
+import warnings
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -40,9 +42,12 @@ from leitura import normalizar_nome
 
 PASTA_PROJETO = Path(__file__).resolve().parent
 ARQUIVO_TOKEN = PASTA_PROJETO / "config" / "argus_token.txt"
+# Opcional: se a Benconsig usar outro endereço da API, escreva-o neste arquivo
+# (ex.: https://argus4com.com.br:23001/apiargus)
+ARQUIVO_URL = PASTA_PROJETO / "config" / "argus_url.txt"
 PASTA_ENTRADA = PASTA_PROJETO / "entrada"
 
-URL_BASE = "https://argus.app.br/apiargus"
+URL_PADRAO = "https://argus.app.br/apiargus"
 FUSO = "-03:00"  # horário de Brasília
 
 # Nome do grupo operacional da URA (comparado sem acentos e sem maiúsculas)
@@ -92,27 +97,69 @@ def ler_token(arquivo=ARQUIVO_TOKEN):
     return token
 
 
+def url_base(arquivo=ARQUIVO_URL):
+    """Endereço da API: o de config/argus_url.txt, se existir; senão, o padrão."""
+    if Path(arquivo).exists():
+        url = Path(arquivo).read_bytes().decode("utf-8-sig").strip()
+        if url:
+            return url.rstrip("/")
+    return URL_PADRAO
+
+
+def contexto_compativel():
+    """
+    Conexão segura aceitando servidores com configuração antiga.
+
+    O Python recente recusa algumas cifras e versões antigas do TLS que certos
+    servidores ainda usam. Aqui elas são liberadas, mas o certificado do
+    servidor CONTINUA sendo verificado (a conexão segue segura contra impostores).
+    """
+    contexto = ssl.create_default_context()
+    contexto.set_ciphers("DEFAULT:@SECLEVEL=0")
+    with warnings.catch_warnings():  # o TLS 1.0 é obsoleto, mas alguns servidores ainda usam
+        warnings.simplefilter("ignore", DeprecationWarning)
+        contexto.minimum_version = ssl.TLSVersion.TLSv1
+    # Aceita servidores sem "renegociação segura" (OP_LEGACY_SERVER_CONNECT)
+    contexto.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0x4)
+    return contexto
+
+
+def abrir(requisicao, contexto):
+    """Envia a requisição e devolve o JSON da resposta."""
+    with urllib.request.urlopen(requisicao, timeout=120, context=contexto) as resposta:
+        return json.loads(resposta.read().decode("utf-8"))
+
+
 def chamar_api(caminho, corpo, token):
     """
     Faz uma chamada POST à API do Argus e devolve a resposta (dicionário).
 
     `caminho` é a parte final do endereço, ex.: "report/desempenhoresumido".
     """
+    endereco = f"{url_base()}/{caminho}"
     requisicao = urllib.request.Request(
-        f"{URL_BASE}/{caminho}",
+        endereco,
         data=json.dumps(corpo).encode("utf-8"),
         headers={"Token-Signature": token, "Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(requisicao, timeout=120) as resposta:
-            dados = json.loads(resposta.read().decode("utf-8"))
+        try:
+            dados = abrir(requisicao, ssl.create_default_context())
+        except urllib.error.URLError as erro:
+            # Falha na conexão segura: tenta de novo no modo compatível
+            if not isinstance(erro.reason, ssl.SSLError) or isinstance(erro, urllib.error.HTTPError):
+                raise
+            dados = abrir(requisicao, contexto_compativel())
     except urllib.error.HTTPError as erro:
         if erro.code == 403:
             raise ErroArgus("O Argus recusou o acesso (403). Confira se o token está correto.")
-        raise ErroArgus(f"O Argus respondeu com erro {erro.code} em {caminho}.")
+        raise ErroArgus(f"O Argus respondeu com erro {erro.code} em {endereco}.")
     except urllib.error.URLError as erro:
-        raise ErroArgus(f"Não consegui conectar ao Argus ({erro.reason}). Confira a internet.")
+        raise ErroArgus(
+            f"Não consegui conectar ao Argus em {endereco}\n({erro.reason}).\n"
+            "Se o endereço da API da Benconsig for outro, escreva-o em config\\argus_url.txt."
+        )
 
     # codStatus 1 = sucesso; menor que 1 = falha
     if dados.get("codStatus", 1) < 1:
