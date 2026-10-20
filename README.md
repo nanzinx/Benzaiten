@@ -6,6 +6,7 @@ Scripts em Python para tarefas diárias do time:
 |---|---|---|
 | `escala_bases.py` | Sorteia as bases do Ativo 2 entre os grupos dos supervisores | pronto |
 | `anonimizar.py` | Tira CPFs e dados pessoais das exportações | pronto |
+| `argus_api.py` | Baixa do Argus o desempenho (TMA/TME), os leads da URA e os operadores | pronto (falta testar com o token real) |
 | `relatorio_ura.py` | Relatório de produtividade da URA | em desenvolvimento |
 
 Tudo roda **no seu computador**. Nenhum dado é enviado para a internet.
@@ -142,7 +143,47 @@ antes de compartilhar.
 
 ---
 
-## 4. Testes
+## 4. Baixar os dados do Argus pela API
+
+### Primeira vez: guardar o token
+
+1. No Argus, abra **Configurações > Desenvolvedor > Acesso API** e copie a chave.
+2. Crie o arquivo `config\argus_token.txt` e cole só a chave dentro dele.
+
+O token é uma senha: ele fica só no seu computador (o `.gitignore` impede que vá
+para o GitHub). Não mande esse arquivo para ninguém.
+
+Para conferir se está tudo certo, rode uma vez:
+
+```
+python argus_api.py --diagnostico
+```
+
+Ele mostra os grupos operacionais e os **nomes** dos campos que o Argus devolve
+(sem mostrar os dados). Se aparecer `NENHUM` ou `None` em alguma linha, me mande essa saída.
+
+### Todo dia
+
+```
+python argus_api.py
+```
+
+Baixa os dados de **ontem** e grava em `entrada\`:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `argus_desempenho_AAAA-MM-DD.csv` | Data, Operador, Supervisor, TME, TMA |
+| `argus_leads_ura_AAAA-MM-DD.csv` | Data, Operador, Supervisor, Leads. Atend. (grupo RECEPTIVO - URA) |
+| `argus_operadores_AAAA-MM-DD.csv` | Cadastro de operadores (sem CPF, e-mail, login, RE e ramal) |
+
+Para outro dia: `python argus_api.py --data 17/10/2026`.
+
+> A **tarifação** (custos VENDITORE e 4NET) **não existe na API** do Argus.
+> Continue exportando à mão: Argus > Tarifação > Painel de Visualização, para `entrada\`.
+
+---
+
+## 5. Testes
 
 ```
 python -m pytest

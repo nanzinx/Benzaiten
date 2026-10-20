@@ -23,3 +23,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Token da API do Argus (nunca enviar)
+*token*
+!tests/test_*.py
