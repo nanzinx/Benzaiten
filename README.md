@@ -49,7 +49,15 @@ As pastas são criadas sozinhas quando o script precisa delas.
 
 ### Primeira vez: importar a planilha antiga
 
-Copie a `Escala_Bases_Ativo2.xlsm` para a pasta `config/` e rode:
+A pasta `config/` **não vem junto** com o projeto (ela guarda dados e fica fora do GitHub).
+Crie a pasta e copie a planilha para dentro dela. No terminal do Windows (PowerShell):
+
+```
+mkdir config
+copy "C:\caminho\onde\esta\Escala_Bases_Ativo2.xlsm" config\
+```
+
+(ou crie a pasta `config` pelo Explorador de Arquivos e arraste a planilha para dentro). Depois rode:
 
 ```
 python escala_bases.py --importar-xlsm config/Escala_Bases_Ativo2.xlsm

@@ -302,6 +302,13 @@ def importar_xlsm(caminho_xlsm, arquivo_cadastro=ARQUIVO_CADASTRO, arquivo_histo
          (só se ele ainda não existir);
       2. copia para o histórico os dias da aba Escala que ainda não estão lá.
     """
+    caminho_xlsm = Path(caminho_xlsm)
+    if not caminho_xlsm.exists():
+        raise FileNotFoundError(
+            f"Não encontrei a planilha {caminho_xlsm}.\n"
+            "A pasta config/ não vem junto com o projeto (ela guarda dados e fica fora do GitHub).\n"
+            "Crie a pasta config dentro da pasta do projeto, copie a planilha para lá e rode de novo."
+        )
     # keep_vba=False: só lemos os valores; as macros não são executadas
     wb = openpyxl.load_workbook(caminho_xlsm, read_only=True, data_only=True)
 
