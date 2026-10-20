@@ -1,6 +1,10 @@
 <div align="center">
 
-# 📊 Automações Benconsig
+# ⛩️ BENZAITEN
+
+### 弁財天 · Automação de relatórios da Benconsig
+
+*“Que os dados fluam — e as vendas também.”*
 
 **Relatório de produtividade da URA · Escala de bases do Ativo 2 · Integração com o Argus**
 
@@ -13,6 +17,11 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 ![Local](https://img.shields.io/badge/roda-100%25%20local-FFE600?labelColor=0B2A5B)
 
 </div>
+
+> **Por que BENZAITEN?** Na mitologia japonesa, **Benzaiten** (弁財天) é uma das Sete Divindades
+> da Sorte: a deusa de **tudo o que flui**, como a água, as palavras, o conhecimento e a **riqueza**.
+> É o que este projeto faz: as exportações entram, os dados fluem e saem relatórios de vendas
+> prontos todos os dias. E o **Ben** de **Ben**consig já estava no nome dela.
 
 ---
 
@@ -635,6 +644,6 @@ Os arquivos `argus_bruto_*` têm todas as colunas originais para testar outras f
 
 ---
 
-Feito para a equipe da **Benconsig** · Python · rodando 100% local
+**BENZAITEN** 弁財天 · feito para a equipe da **Benconsig** · Python · rodando 100% local
 
 </div>
