@@ -7,7 +7,7 @@ Scripts em Python para tarefas diárias do time:
 | `escala_bases.py` | Sorteia as bases do Ativo 2 entre os grupos dos supervisores | pronto |
 | `anonimizar.py` | Tira CPFs e dados pessoais das exportações | pronto |
 | `argus_api.py` | Baixa do Argus o desempenho (TMA/TME), os leads da URA e os operadores | pronto (falta testar com o token real) |
-| `relatorio_ura.py` | Relatório de produtividade da URA | em desenvolvimento |
+| `relatorio_ura.py` | Relatório de produtividade da URA | pronto (falta conferir as vendas com a esteira real) |
 
 Tudo roda **no seu computador**. Nenhum dado é enviado para a internet.
 
@@ -143,7 +143,65 @@ antes de compartilhar.
 
 ---
 
-## 4. Baixar os dados do Argus pela API
+## 4. Relatório de produtividade da URA
+
+### Todo dia
+
+1. Exporte para `entrada\`:
+   - a **esteira** do Vanguard;
+   - a **tarifação** da VENDITORE e a da 4NET do dia (Argus > Tarifação > Painel de Visualização).
+
+   Apague os arquivos do dia anterior: as tarifações não têm data e seriam somadas.
+2. Rode:
+
+   ```
+   python relatorio_ura.py
+   ```
+
+   O desempenho (TMA/TMO), os leads da URA e o cadastro de operadores são baixados
+   sozinhos pela API do Argus (precisa do `config\argus_token.txt`, veja a seção 5).
+   Se preferir exportar à mão, coloque os arquivos em `entrada\` e use `--sem-api`.
+3. Abra `saida\relatorio_produtividade_AAAA-MM-DD.xlsx`.
+
+A data é a do **último dia útil** (na segunda-feira, a sexta). Para outro dia:
+`python relatorio_ura.py --data 17/10/2026`.
+
+### Como o relatório é calculado
+
+| Coluna | Cálculo |
+|---|---|
+| TMA / TMO | colunas TMA e TME do desempenho do Argus. Na equipe: **soma** dos operadores |
+| Leads atendidos/URA | leads do grupo RECEPTIVO - URA |
+| Custo total | custo do operador na tarifação (VENDITORE + 4NET) + parte do custo dos robôs da URA (`OPER VIRT...`), dividido na proporção dos leads |
+| Vendas geral | soma do Valor Contrato das etapas Andamento, Pendente e Pago, com Data/Hora no dia do relatório |
+| Cliente efetivados | CPFs diferentes com etapa Andamento ou Pago |
+| Custo por CPF | custo total ÷ clientes efetivados |
+| Produção/lead | vendas geral ÷ leads |
+
+Ordem: de quem **mais vendeu** para quem menos vendeu (empate: mais leads); depois o
+total de cada equipe, também por vendas; depois TOTAL OPERADORES, a linha
+LIGAÇÕES SEM DERIVAÇÃO P/ OPERADOR e o TOTAL GERAL (que inclui essa linha).
+Só aparecem operadores com leads, custo, vendas ou clientes.
+
+As regras ficam no início do `relatorio_ura.py` (etapas, prefixos dos robôs etc.).
+
+### Cadastro e apelidos (`config\operadores.xlsx`)
+
+- Aba **Operadores**: atualizada sozinha a cada exportação de operadores do Argus.
+  A equipe é o primeiro nome do supervisor. Quem não está ATIVO é ignorado.
+- Aba **Apelidos**: preenchida por você quando o nome é diferente entre os sistemas.
+  Coluna A = nome como aparece no sistema; coluna B = nome oficial (o do Argus).
+  Ex.: `EMILY SANTOS ARAUJO` → `EMILLY SANTOS ARAUJO`.
+  Acentos, maiúsculas e espaços extras já são ignorados; não há ligação automática
+  por semelhança.
+
+No final, o terminal lista os **nomes sem vínculo** (para você decidir se é apelido)
+e os ex-colaboradores ignorados. A aba **Conferência** do relatório traz os arquivos
+lidos, a conferência dos custos e esses avisos.
+
+---
+
+## 5. Baixar os dados do Argus pela API
 
 ### Primeira vez: guardar o token
 
@@ -199,7 +257,7 @@ como vieram do Argus (`argus_bruto_*.csv`).
 
 ---
 
-## 5. Testes
+## 6. Testes
 
 ```
 python -m pytest
