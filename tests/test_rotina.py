@@ -118,6 +118,35 @@ def test_comparacao_usa_o_ultimo_relatorio_antes_do_dia(tmp_path):
     assert "d_leads" not in linhas[1]  # não existia no relatório anterior
 
 
+def test_relatorio_de_segunda_compara_com_a_sexta_mesmo_com_relatorio_de_sabado(tmp_path):
+    arquivo = tmp_path / "hist.csv"
+    ru.salvar_no_historico(date(2026, 10, 16), [linha("operador", "ANA", 10, 5.0, 100.0)], arquivo)  # sexta
+    ru.salvar_no_historico(date(2026, 10, 17), [linha("operador", "ANA", 1, 1.0, 1.0)], arquivo)     # sábado (extra)
+    avisos = []
+    linhas = [linha("operador", "ANA", 12, 4.0, 150.0)]
+
+    anterior = ru.comparar_com_anterior(linhas, ru.ler_historico(arquivo), DIA,
+                                        calendario.dia_util_anterior(DIA), avisos)
+
+    assert anterior == date(2026, 10, 16)
+    assert linhas[0]["d_leads"] == 2
+    assert avisos == []
+
+
+def test_sem_o_relatorio_do_dia_util_anterior_compara_com_o_mais_recente_e_avisa(tmp_path):
+    arquivo = tmp_path / "hist.csv"
+    ru.salvar_no_historico(date(2026, 10, 14), [linha("operador", "ANA", 4, 1.0, 1.0)], arquivo)
+    avisos = []
+    linhas = [linha("operador", "ANA", 12, 4.0, 150.0)]
+
+    # Relatório de 19/10 (segunda): o esperado era 16/10, que não foi gerado
+    anterior = ru.comparar_com_anterior(linhas, ru.ler_historico(arquivo), DIA, date(2026, 10, 16), avisos)
+
+    assert anterior == date(2026, 10, 14)
+    assert linhas[0]["d_leads"] == 8
+    assert len(avisos) == 1 and "16/10/2026" in avisos[0] and "--data 16/10/2026" in avisos[0]
+
+
 def test_sem_historico_nao_compara():
     assert ru.comparar_com_anterior([linha("operador", "ANA", 1, 1, 1)], [], DIA) is None
 
@@ -236,6 +265,10 @@ def test_relatorio_compara_pinta_e_arquiva(projeto):
     assert ws.cell(ana, 5).fill.fgColor.rgb.endswith("C6EFCE")  # 30 leads: meta verde
     assert ws.cell(bruno, 5).fill.fgColor.rgb.endswith("FFC7CE")  # 10 leads: meta vermelha
     assert len({r["data"] for r in ru.ler_historico(ru.ARQUIVO_HISTORICO)}) == 2
+    # 16/10 (sexta) é o dia útil anterior a 19/10 (segunda): sem aviso de dia faltando
+    avisos = [c.value for c in openpyxl.load_workbook(
+        projeto / "saida" / "relatorio_produtividade_2026-10-19.xlsx")["Conferência"]["A"] if c.value]
+    assert not any("não está no histórico" in str(a) for a in avisos)
 
 
 # --- Comando único (benzaiten.py) ---------------------------------------------------

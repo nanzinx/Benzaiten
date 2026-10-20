@@ -522,17 +522,28 @@ def salvar_no_historico(dia, linhas, arquivo=ARQUIVO_HISTORICO):
                                r["leads"], numero_br(r["custo"]), numero_br(r["vendas"]), r["clientes"]])
 
 
-def comparar_com_anterior(linhas, historico, dia):
+def comparar_com_anterior(linhas, historico, dia, esperado=None, avisos=None):
     """
-    Acrescenta em cada linha a diferença em relação ao último relatório antes de `dia`:
+    Acrescenta em cada linha a diferença em relação ao relatório do dia útil anterior:
     d_leads, d_vendas e d_custo. Devolve a data comparada (ou None se não houver).
+
+    `esperado` é o dia útil anterior ao dia do relatório (ex.: relatório de segunda,
+    19/10 -> compara com sexta, 16/10). Se esse dia não estiver no histórico, compara
+    com o relatório mais recente antes de `dia` e registra um aviso em `avisos`.
 
     Quem não aparecia no relatório anterior fica sem comparação.
     """
     datas = sorted({r["data"] for r in historico if r["data"] and r["data"] < dia})
     if not datas:
         return None
-    anterior = datas[-1]
+    if esperado in datas:
+        anterior = esperado
+    else:
+        anterior = datas[-1]
+        if esperado and avisos is not None:
+            avisos.append(f"O relatório de {esperado:%d/%m/%Y} (dia útil anterior) não está no histórico: "
+                          f"a comparação foi feita com o de {anterior:%d/%m/%Y}. Para gerá-lo: "
+                          f"python relatorio_ura.py --data {esperado:%d/%m/%Y}")
     do_anterior = {(r["tipo"], normalizar_nome(r["nome"])): r for r in historico if r["data"] == anterior}
     for linha in linhas:
         antes = do_anterior.get((linha["tipo"], normalizar_nome(linha["nome"])))
@@ -932,7 +943,11 @@ def main(argumentos=None):
     linhas = linhas_do_relatorio(resultado)
 
     # Comparação com o relatório anterior e metas
-    data_anterior = comparar_com_anterior(linhas, ler_historico(args.historico), dia)
+    # O relatório de um dia é comparado com o do dia útil anterior a ele
+    # (ex.: feito em 20/10 -> relatório de 19/10 -> comparado com 16/10, a sexta)
+    feriados = ler_feriados()
+    data_anterior = comparar_com_anterior(linhas, ler_historico(args.historico), dia,
+                                          dia_util_anterior(dia, feriados), resultado.avisos)
     if criar_modelo_metas(args.metas):
         print(f"Criado {args.metas}: preencha os limites para ativar o semáforo de metas.")
     metas = ler_metas(args.metas)
@@ -942,7 +957,7 @@ def main(argumentos=None):
     salvar_no_historico(dia, linhas, args.historico)
 
     # Resumo no terminal
-    print(f"\nRELATÓRIO DE PRODUTIVIDADE URA — {dia:%d/%m/%Y}")
+    print(f"\nRELATÓRIO DE PRODUTIVIDADE URA — {dia:%d/%m/%Y} (gerado em {date.today():%d/%m/%Y})")
     print("\nArquivos lidos:")
     for nome, tipo, obs in resultado.arquivos:
         print(f"  - {nome}: {tipo} ({obs})")

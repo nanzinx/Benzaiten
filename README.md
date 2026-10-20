@@ -233,7 +233,7 @@ O `BENZAITEN.bat` (ou `python benzaiten.py`) faz, em ordem:
 |---|---|---|
 | 1 | **Confere a `entrada\`** | Mostra o que tem e o que falta (esteira, 2 tarifações, desempenho, leads) |
 | 2 | **Escala de bases de hoje** | Pulada se hoje for fim de semana/feriado ou se já foi sorteada |
-| 3 | **Relatório da URA** | Do último dia útil; baixa desempenho e leads pela API do Argus |
+| 3 | **Relatório da URA** | Sempre do **dia útil anterior** (feito em 20/10 → relatório de 19/10); baixa desempenho e leads pela API do Argus |
 | 4 | **Arquiva a `entrada\`** | Move os arquivos usados para `entrada\processados\AAAA-MM-DD\` |
 
 Se uma etapa der erro, as outras continuam, e o **Resumo** no final mostra o que deu certo e o que falhou.
@@ -379,7 +379,18 @@ O arquivo `config\operadores.xlsx` é criado e atualizado sozinho. Ele tem duas 
 ### 📊 Comparação com o relatório anterior
 
 Cada relatório guarda seus números em `historico\relatorio_ura.csv`. A partir do segundo dia,
-aparecem três colunas a mais, comparando com o **último relatório anterior**:
+aparecem três colunas a mais, comparando com o relatório do **dia útil anterior ao dia do relatório**:
+
+| Feito em | Relatório de | Comparado com |
+|---|---|---|
+| terça 20/10 | segunda 19/10 | sexta 16/10 |
+| quarta 21/10 | terça 20/10 | segunda 19/10 |
+| quarta 14/10 (depois do feriado de 12/10) | terça 13/10 | sexta 09/10 |
+
+Se o relatório desse dia não estiver no histórico (alguém esqueceu de gerar), a comparação usa o
+mais recente que existir e um **aviso** aparece no terminal e na aba Conferência, com o comando
+para gerar o dia que faltou.
+
 
 | Coluna | Mostra | Verde quando | Vermelho quando |
 |---|---|---|---|
