@@ -1,0 +1,25 @@
+# ATENÇÃO: este repositório é PÚBLICO.
+# Nenhum dado da empresa (clientes, operadores, custos, escalas) pode ser enviado ao GitHub.
+# Só o código, os testes e a documentação ficam versionados.
+
+# Pastas de dados (ficam apenas no seu computador)
+entrada/
+anonimizados/
+config/
+saida/
+historico/
+
+# Qualquer planilha ou CSV solto, por segurança
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+# ...exceto os dados FICTÍCIOS usados nos testes
+!tests/dados_ficticios/**
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
