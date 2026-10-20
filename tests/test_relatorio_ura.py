@@ -227,7 +227,8 @@ def test_execucao_completa_gera_a_planilha(entrada, tmp_path, capsys):
     saida = tmp_path / "saida"
     cadastro = tmp_path / "config" / "operadores.xlsx"
     assert ru.main(["--data", "19/10/2026", "--sem-api", "--entrada", str(entrada),
-                    "--saida", str(saida), "--cadastro", str(cadastro)]) == 0
+                    "--saida", str(saida), "--cadastro", str(cadastro),
+                    "--historico", str(tmp_path / "hist.csv"), "--metas", str(tmp_path / "metas.xlsx")]) == 0
 
     wb = openpyxl.load_workbook(saida / "relatorio_produtividade_2026-10-19.xlsx")
     ws = wb["Relatório"]

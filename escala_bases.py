@@ -32,6 +32,7 @@ import openpyxl
 import pandas as pd
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
+from calendario import eh_feriado, ler_feriados
 from leitura import normalizar_nome
 
 # ---------------------------------------------------------------------------
@@ -396,6 +397,9 @@ def main(argumentos=None):
     avisos = []
     if data_sorteio.weekday() >= 5:
         avisos.append("a data escolhida cai no fim de semana.")
+    feriado = eh_feriado(data_sorteio, ler_feriados())
+    if feriado:
+        avisos.append(f"a data escolhida é feriado ({feriado}).")
     if any(r["data"] == data_sorteio for r in historico):
         if not args.substituir and not confirmar(f"Já existe sorteio para {data_sorteio:%d/%m/%Y}. Substituir?"):
             print("Nada foi alterado.")

@@ -13,7 +13,7 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 ![Python](https://img.shields.io/badge/Python-3.10%2B-0B2A5B?logo=python&logoColor=FFE600)
 ![pandas](https://img.shields.io/badge/pandas-dados-0B2A5B?logo=pandas&logoColor=FFE600)
 ![openpyxl](https://img.shields.io/badge/openpyxl-Excel-0B2A5B)
-![pytest](https://img.shields.io/badge/testes-289%20passando-2E7D32?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/testes-318%20passando-2E7D32?logo=pytest&logoColor=white)
 ![Local](https://img.shields.io/badge/roda-100%25%20local-FFE600?labelColor=0B2A5B)
 
 </div>
@@ -40,11 +40,12 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 5. [Relatório de produtividade da URA](#-relatório-de-produtividade-da-ura)
 6. [API do Argus](#-api-do-argus)
 7. [Escala de bases do Ativo 2](#-escala-de-bases-do-ativo-2)
-8. [Anonimização](#-anonimização)
-9. [Privacidade e segurança](#-privacidade-e-segurança)
-10. [Problemas comuns](#-problemas-comuns)
-11. [Para quem for manter o código](#-para-quem-for-manter-o-código)
-12. [Glossário](#-glossário)
+8. [Feriados](#-feriados)
+9. [Anonimização](#-anonimização)
+10. [Privacidade e segurança](#-privacidade-e-segurança)
+11. [Problemas comuns](#-problemas-comuns)
+12. [Para quem for manter o código](#-para-quem-for-manter-o-código)
+13. [Glossário](#-glossário)
 
 ---
 
@@ -52,10 +53,13 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 
 | Script | Para que serve | Quando rodar |
 |---|---|---|
+| ⛩️ `BENZAITEN.bat` | **Atalho de duplo clique**: pergunta os ausentes e roda a rotina inteira | Todo dia útil |
+| 🚀 `benzaiten.py` | **Comando único**: confere a `entrada\`, sorteia a escala, gera o relatório e arquiva os arquivos usados | Todo dia útil (o `.bat` chama) |
 | 📈 `relatorio_ura.py` | Gera o relatório de produtividade da URA (TMA, TMO, leads, custo, vendas, clientes) | Todo dia útil |
 | 🔌 `argus_api.py` | Baixa do Argus o desempenho, os leads da URA e o cadastro de operadores | Automático (o relatório chama sozinho) |
 | 🎲 `escala_bases.py` | Sorteia as bases do INSS entre os grupos dos supervisores do Ativo 2 | Todo dia útil |
 | 🕶️ `anonimizar.py` | Remove CPFs e dados pessoais das exportações | Só antes de compartilhar arquivos |
+| 📅 `calendario.py` | Feriados nacionais (calculados sozinhos) + feriados locais e o "último dia útil" | Usado pelos outros |
 | 🧰 `leitura.py` | Funções comuns (ler CSV/Excel, converter "R$ 1.234,56", datas, nomes) | Usado pelos outros |
 
 ### Como os dados fluem
@@ -71,33 +75,42 @@ flowchart LR
     B --> E
     C --> E
     E --> R{{"📈 relatorio_ura.py"}}
-    K[("⚙️ config/operadores.xlsx<br/>Operadores + Apelidos")] <--> R
+    K[("⚙️ config/<br/>operadores · metas · feriados")] <--> R
+    H[("🗂️ historico/relatorio_ura.csv")] <-->|comparação com o dia anterior| R
     R --> S[["📊 saida/relatorio_produtividade_AAAA-MM-DD.xlsx"]]
     R --> T["🖥️ resumo no terminal<br/>(avisos e totais)"]
+    R -->|arquiva| P[/"📁 entrada/processados/AAAA-MM-DD/"/]
 ```
 
 ### Estrutura de pastas
 
 ```
 automa-relat-rios/
+├── ⛩️ BENZAITEN.bat          atalho de duplo clique (rotina inteira)
+├── 🚀 benzaiten.py          comando único da rotina diária
 ├── 📈 relatorio_ura.py      relatório da URA
 ├── 🔌 argus_api.py          download pela API do Argus
 ├── 🎲 escala_bases.py       sorteio das bases do Ativo 2
 ├── 🕶️ anonimizar.py         remove dados pessoais das exportações
+├── 📅 calendario.py         feriados e "último dia útil"
 ├── 🧰 leitura.py            funções comuns de leitura e conversão
 ├── 🧪 tests/                testes automáticos (só dados inventados)
 ├── requirements.txt         bibliotecas necessárias
 │
 │   ── pastas criadas no seu computador (NUNCA vão para o GitHub) ──
 ├── 📁 entrada/              exportações do dia (Argus e Vanguard)
+│   └── processados/AAAA-MM-DD/   arquivos já usados, guardados por dia
 ├── 📁 anonimizados/         cópias sem dados de clientes
-├── 📁 config/               operadores.xlsx, bases.xlsx, argus_token.txt
+├── 📁 config/               operadores.xlsx, bases.xlsx, metas.xlsx,
+│                            feriados.xlsx, argus_token.txt
 ├── 📁 saida/                relatórios e escalas gerados
-└── 📁 historico/            histórico acumulado das escalas
+└── 📁 historico/            relatorio_ura.csv (números de cada dia)
+                             historico_escalas.csv (sorteios)
 ```
 
 As pastas `entrada/`, `saida/` e `historico/` são criadas sozinhas quando o script precisa.
-A `config/` você cria na primeira vez (veja abaixo).
+A `config/` você cria na primeira vez (veja abaixo); `metas.xlsx` e `feriados.xlsx` são criados
+sozinhos, em branco, na primeira execução do `benzaiten.py`.
 
 ---
 
@@ -112,6 +125,12 @@ A `config/` você cria na primeira vez (veja abaixo).
 | 🔌 API do Argus — conexão | ✅ **Funcionando** | Conexão, token e diagnóstico testados no computador da empresa |
 | 🔌 API do Argus — fórmulas | 🟡 **Falta conferir** | TMA/TME (média ponderada) e leads (`qtdeAtendimentoTotal` do grupo URA) precisam ser comparados com a exportação manual do mesmo dia |
 | 📄 Tarifação | ⚪ **Manual** | Não existe na API do Argus: continua sendo exportada à mão |
+| ⛩️ Rotina em um clique (`BENZAITEN.bat`) | ✅ **Pronta** | Testada em simulação com os dados de 07/10 e 08/10 |
+| 📅 Feriados | ✅ **Pronto** | Nacionais automáticos; locais em `config\feriados.xlsx` |
+| 📊 Histórico + comparação com o dia anterior | ✅ **Pronto** | Aparece a partir do segundo relatório |
+| 🚥 Metas (semáforo) | ✅ **Pronto** | Os limites em `config\metas.xlsx` precisam ser definidos pelo gestor |
+| 🔜 Integração com o chat interno | ⚪ **Planejada** | Enviar as planilhas pelo software de chat da empresa (a validar) |
+| 🔜 Robô de esteira do Vanguard | ⚪ **Planejada** | Hoje o robô puxa só esteiras específicas; precisa ser validado com o gestor de TI |
 
 > [!NOTE]
 > Os dois itens 🟡 têm um roteiro de conferência na seção
@@ -198,18 +217,45 @@ Todos os testes devem aparecer como `passed`.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
-│ 1. Apagar os arquivos do dia anterior em entrada\                    │
-│ 2. Exportar para entrada\:                                           │
+│ 1. Exportar para entrada\:                                           │
 │      • Esteira do Vanguard                                           │
 │      • Tarifação VENDITORE   (Argus > Tarifação > Painel)            │
 │      • Tarifação 4NET        (Argus > Tarifação > Painel)            │
-│ 3. python relatorio_ura.py      → saida\relatorio_produtividade_...  │
-│ 4. python escala_bases.py       → saida\escala_...                   │
+│ 2. Dois cliques em  BENZAITEN.bat                                    │
+│ 3. Digitar os ausentes da escala (ou só Enter)                       │
+│ 4. Abrir a pasta saida\                                              │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+O `BENZAITEN.bat` (ou `python benzaiten.py`) faz, em ordem:
+
+| # | Etapa | Detalhe |
+|---|---|---|
+| 1 | **Confere a `entrada\`** | Mostra o que tem e o que falta (esteira, 2 tarifações, desempenho, leads) |
+| 2 | **Escala de bases de hoje** | Pulada se hoje for fim de semana/feriado ou se já foi sorteada |
+| 3 | **Relatório da URA** | Do último dia útil; baixa desempenho e leads pela API do Argus |
+| 4 | **Arquiva a `entrada\`** | Move os arquivos usados para `entrada\processados\AAAA-MM-DD\` |
+
+Se uma etapa der erro, as outras continuam, e o **Resumo** no final mostra o que deu certo e o que falhou.
+
 O desempenho (TMA/TMO), os leads da URA e o cadastro de operadores **não precisam ser exportados**:
-o relatório baixa pela API do Argus.
+o relatório baixa pela API do Argus. E **não é mais preciso apagar os arquivos do dia anterior**:
+eles são arquivados sozinhos.
+
+<details>
+<summary><b>Opções do <code>benzaiten.py</code> (clique para ver)</b></summary>
+
+| Situação | Comando |
+|---|---|
+| Rotina completa | `python benzaiten.py` |
+| Com ausentes na escala | `python benzaiten.py --ausentes "FULANO, BELTRANO"` |
+| Relatório de outro dia | `python benzaiten.py --data 17/10/2026` |
+| Não arquivar a `entrada\` | `python benzaiten.py --nao-arquivar` |
+| Só o relatório | `python benzaiten.py --sem-escala` |
+| Só a escala | `python benzaiten.py --sem-relatorio` |
+| Sem a API do Argus (tudo exportado à mão) | `python benzaiten.py --sem-api` |
+
+</details>
 
 ---
 
@@ -226,10 +272,12 @@ python relatorio_ura.py
 | Relatório do último dia útil (padrão) | `python relatorio_ura.py` |
 | Relatório de outro dia (ex.: depois de feriado) | `python relatorio_ura.py --data 17/10/2026` |
 | Não usar a API (todos os arquivos exportados à mão) | `python relatorio_ura.py --sem-api` |
+| Arquivar os arquivos usados no final | `python relatorio_ura.py --arquivar` |
 
 > [!TIP]
 > **Último dia útil:** de terça a sexta, é o dia anterior; na segunda-feira (e no fim de semana), é a **sexta**.
-> Feriados não entram na conta: nesses casos use `--data`.
+> Feriados também são pulados: os nacionais automaticamente e os locais pela planilha
+> [`config\feriados.xlsx`](#-feriados).
 
 ### O que o script faz, passo a passo
 
@@ -327,6 +375,60 @@ O arquivo `config\operadores.xlsx` é criado e atualizado sozinho. Ele tem duas 
 |---|---|---|
 | **NOMES SEM VÍNCULO** | O nome não está no cadastro | Se for grafia diferente, cadastre em **Apelidos**. Se for alguém que saiu, ignore |
 | **Ex-colaboradores ignorados** | O nome está no Argus como **INATIVO** | Nada: os números dele ficam fora do relatório |
+
+### 📊 Comparação com o relatório anterior
+
+Cada relatório guarda seus números em `historico\relatorio_ura.csv`. A partir do segundo dia,
+aparecem três colunas a mais, comparando com o **último relatório anterior**:
+
+| Coluna | Mostra | Verde quando | Vermelho quando |
+|---|---|---|---|
+| `LEADS vs DD/MM` | ▲ ou ▼ e a diferença de leads | subiu | desceu |
+| `VENDAS vs DD/MM` | ▲ ou ▼ e a diferença em reais | subiu | desceu |
+| `CUSTO vs DD/MM` | ▲ ou ▼ e a diferença em reais | **desceu** | **subiu** |
+
+- `=` significa que não mudou. Célula vazia: o operador não aparecia no relatório anterior.
+- Rodar o mesmo dia de novo **substitui** os números daquele dia no histórico (não duplica).
+- O terminal também mostra o resumo: `Comparado com 07/10/2026: leads +36 | vendas +R$ 0,00 | custo -R$ 30,10`.
+
+> [!TIP]
+> O `historico\relatorio_ura.csv` abre direto no Excel (separador `;`, vírgula decimal) e é a base
+> para futuros relatórios semanais e mensais.
+
+### 🚥 Metas (semáforo)
+
+Preencha `config\metas.xlsx` (criado em branco na primeira execução) e as células dos **operadores**
+ficam 🟩 verdes, 🟨 amarelas ou 🟥 vermelhas.
+
+| Indicador | Melhor quando | Verde | Vermelho |
+|---|---|---|---|
+| TMA | menor | `00:01:00` | `00:02:00` |
+| LEADS ATENDIDOS/URA | maior | `30` | `10` |
+| VENDAS GERAL | maior | `15000` | `5000` |
+| *(os outros…)* | | *em branco = não pinta* | |
+
+**Como a cor é escolhida:**
+
+| Melhor quando | 🟩 Verde | 🟨 Amarelo | 🟥 Vermelho |
+|---|---|---|---|
+| **maior** | valor ≥ Verde | entre os dois | valor ≤ Vermelho |
+| **menor** | valor ≤ Verde | entre os dois | valor ≥ Vermelho |
+
+- TMA e TMO podem ser escritos como tempo (`00:01:30`) ou em segundos (`90`).
+- Valores em reais: só o número (`15000` ou `15000,50`).
+- A aba **Conferência** do relatório lista as metas aplicadas, e o terminal mostra quantas células
+  ficaram de cada cor.
+
+### 📦 Histórico e arquivamento
+
+| O quê | Onde | Para quê |
+|---|---|---|
+| Números de cada relatório | `historico\relatorio_ura.csv` | Comparação com o dia anterior e análises futuras |
+| Arquivos usados no relatório | `entrada\processados\AAAA-MM-DD\` | Evitar que a tarifação de um dia seja somada no dia seguinte |
+
+O arquivamento só **move** os arquivos (o conteúdo não muda) e nunca sobrescreve: se já existir um
+arquivo com o mesmo nome, o novo ganha `_2`, `_3`… Arquivos de **outros dias** (por exemplo, um
+desempenho antigo esquecido) ficam onde estão.
 
 ### 🔩 Regras que podem ser mudadas
 
@@ -446,6 +548,21 @@ Abra `config\bases.xlsx`:
 
 ---
 
+## 📅 Feriados
+
+O "último dia útil" (usado pelo relatório e pela API do Argus) e a escala consideram os feriados:
+
+| Tipo | Como entra |
+|---|---|
+| **Nacionais** | Automático: Confraternização, Tiradentes, Trabalho, Independência, Aparecida, Finados, Proclamação da República, Consciência Negra, Natal e **Sexta-feira Santa** (calculada a partir da Páscoa de cada ano) |
+| **Estaduais, municipais e pontos facultativos** (Carnaval, Corpus Christi…) | Você anota em `config\feriados.xlsx`: coluna **Data** (`dd/mm/aaaa`) e coluna **Descrição** |
+
+**Exemplos:**
+- Na terça depois de um feriado de segunda, o relatório é o da **sexta** anterior.
+- Em feriado, o `benzaiten.py` **não sorteia** a escala; o `escala_bases.py` sorteia, mas avisa.
+
+---
+
 ## 🎭 Anonimização
 
 Use **antes de compartilhar** qualquer exportação com alguém, inclusive com uma IA.
@@ -474,7 +591,7 @@ Se aparecer **ATENÇÃO**, abra o arquivo e confira a coluna indicada antes de c
 | Regra | Como é garantida |
 |---|---|
 | Nada de dados no GitHub | `.gitignore` bloqueia as pastas de dados, `*.csv`, `*.xlsx`, `*.xlsm` e arquivos de token |
-| Originais intactos | Todos os scripts gravam arquivos **novos**; nenhum altera as exportações de entrada |
+| Originais intactos | Todos os scripts gravam arquivos **novos**; nenhum altera as exportações de entrada (o arquivamento só as **move** para `entrada\processados\`) |
 | Token do Argus | Fica só em `config\argus_token.txt` (ou na variável `ARGUS_TOKEN`). Nunca é exibido |
 | Dados de clientes | O relatório usa o CPF só para contar clientes únicos; nenhum CPF aparece na saída |
 | Testes | Usam apenas dados **inventados**, criados dentro dos próprios testes |
@@ -539,8 +656,9 @@ aba **Apelidos**, e cadastre: coluna A = nome como aparece no aviso; coluna B = 
 <details>
 <summary><b>O custo do dia está muito alto</b></summary>
 
-Provavelmente há tarifações de outros dias em `entrada\`: elas são somadas. Apague as antigas e rode de novo.
-A aba **Conferência** mostra quais arquivos foram lidos.
+Provavelmente há tarifações de outros dias em `entrada\`: elas são somadas. Isso acontece quando o
+relatório é rodado sem arquivar (`relatorio_ura.py` sem `--arquivar`, ou `benzaiten.py --nao-arquivar`).
+Mova as antigas para `entrada\processados\` e rode de novo. A aba **Conferência** mostra quais arquivos foram lidos.
 
 </details>
 
@@ -554,9 +672,35 @@ A aba **Conferência** mostra quais arquivos foram lidos.
 </details>
 
 <details>
-<summary><b>Segunda-feira depois de feriado / relatório de outro dia</b></summary>
+<summary><b>Relatório do dia errado depois de um feriado</b></summary>
 
-Use `--data`: `python relatorio_ura.py --data 17/10/2026`.
+Feriados nacionais já são pulados. Se o feriado for **local** (ou ponto facultativo), anote-o em
+`config\feriados.xlsx`. Para gerar um dia específico: `python benzaiten.py --data 17/10/2026`.
+
+</details>
+
+<details>
+<summary><b>A escala de hoje não foi sorteada</b></summary>
+
+O `benzaiten.py` pula a escala quando hoje é **fim de semana ou feriado**, ou quando ela **já foi sorteada**
+(o resumo final diz qual foi o motivo). Para sortear assim mesmo: `python escala_bases.py`; para refazer:
+`python escala_bases.py --substituir`.
+
+</details>
+
+<details>
+<summary><b>As colunas de comparação ("vs DD/MM") não aparecem</b></summary>
+
+Elas só aparecem quando já existe um relatório **anterior** no `historico\relatorio_ura.csv`. No primeiro dia
+de uso é normal não aparecerem.
+
+</details>
+
+<details>
+<summary><b>As células não ficaram coloridas (metas)</b></summary>
+
+Preencha as colunas **Verde** e/ou **Vermelho** em `config\metas.xlsx`. Indicadores com os dois em branco não
+são pintados. As cores valem só para as linhas dos operadores.
 
 </details>
 
@@ -578,6 +722,7 @@ python -m pytest -k sorteio # só os testes com "sorteio" no nome
 | `tests/test_anonimizar.py` | Remoção de CPF/e-mail, codificações, conferência final, leitura de CSV |
 | `tests/test_argus_api.py` | API simulada: datas, campos, junção das linhas, SSL, token |
 | `tests/test_relatorio_ura.py` | Conversão de valores, ex-colaboradores, apelidos, totais da tarifação, rateio, vendas, ordem |
+| `tests/test_rotina.py` | Feriados e Páscoa, histórico, comparação, metas, arquivamento e o comando único `benzaiten.py` |
 
 ### ✅ Roteiro para fechar as pendências 🟡
 

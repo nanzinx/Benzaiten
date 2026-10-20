@@ -26,17 +26,27 @@ Como usar:
   python relatorio_ura.py                    -> relatório do último dia útil
   python relatorio_ura.py --data 17/10/2026  -> relatório de outro dia
   python relatorio_ura.py --sem-api          -> não baixa nada do Argus, usa só entrada/
+  python relatorio_ura.py --arquivar         -> no final, move os arquivos usados para
+                                                entrada/processados/AAAA-MM-DD/
+
+Extras:
+  - Cada relatório é guardado em historico/relatorio_ura.csv. A partir do segundo dia,
+    aparecem colunas comparando leads, vendas e custo com o relatório anterior.
+  - Metas em config/metas.xlsx pintam as células dos operadores de verde, amarelo ou vermelho.
 """
 
 import argparse
+import csv
+import shutil
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from calendario import dia_util_anterior, ler_feriados
 from leitura import (converter_data, converter_valor_br, limpar_cabecalho, ler_tabela,
                      normalizar_nome, tempo_para_segundos)
 
@@ -48,6 +58,8 @@ PASTA_PROJETO = Path(__file__).resolve().parent
 PASTA_ENTRADA = PASTA_PROJETO / "entrada"
 PASTA_SAIDA = PASTA_PROJETO / "saida"
 ARQUIVO_CADASTRO = PASTA_PROJETO / "config" / "operadores.xlsx"
+ARQUIVO_METAS = PASTA_PROJETO / "config" / "metas.xlsx"
+ARQUIVO_HISTORICO = PASTA_PROJETO / "historico" / "relatorio_ura.csv"
 
 ETAPAS_VENDA = {"ANDAMENTO", "PENDENTE", "PAGO"}     # entram em Vendas geral
 ETAPAS_CLIENTE = {"ANDAMENTO", "PAGO"}               # entram em Clientes efetivados
@@ -67,6 +79,12 @@ CINZA_TOTAL = "D9D9D9"
 ZEBRA = "F4F7FB"
 AMARELO_CLARO = "FFF2CC"
 MARROM = "7F6000"
+# Semáforo das metas (fundo, fonte), nas cores padrão do Excel
+SEMAFORO = {
+    "verde": ("C6EFCE", "006100"),
+    "amarelo": ("FFEB9C", "9C5700"),
+    "vermelho": ("FFC7CE", "9C0006"),
+}
 
 # Colunas que identificam cada exportação (nomes padronizados, sem acento)
 TIPOS_DE_ARQUIVO = {
@@ -128,6 +146,7 @@ class Resultado:
     ex_colaboradores: dict = field(default_factory=dict)
     avisos: list = field(default_factory=list)
     arquivos: list = field(default_factory=list)      # [(arquivo, tipo, observação)]
+    usados: list = field(default_factory=list)        # caminhos dos arquivos usados (para arquivar)
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +316,7 @@ def linhas_do_dia(arquivos, dia, resultado, nome_tipo):
         datas = sorted({converter_data(l.get("DATA")) for l in linhas} - {None})
         if do_dia:
             escolhidas += do_dia
+            resultado.usados.append(arquivo)
             resultado.arquivos.append((arquivo.name, nome_tipo, f"{len(do_dia)} linha(s) de {dia:%d/%m/%Y}"))
         else:
             outras = ", ".join(f"{d:%d/%m/%Y}" for d in datas) or "sem data"
@@ -327,6 +347,7 @@ def calcular(dia, entradas, ativos, inativos, apelidos):
     # 3. Custos (tarifação VENDITORE + 4NET)
     for arquivo, linhas in entradas["tarifacao"]:
         resultado.arquivos.append((arquivo.name, NOMES_DOS_TIPOS["tarifacao"], f"{len(linhas)} linha(s)"))
+        resultado.usados.append(arquivo)
         for linha in linhas:
             descricao = str(linha.get("DESCRICAO", "")).strip()
             valor = converter_valor_br(linha.get("VALOR R$"))
@@ -365,6 +386,7 @@ def calcular(dia, entradas, ativos, inativos, apelidos):
     for arquivo, linhas in entradas["esteira"]:
         do_dia = [l for l in linhas if converter_data(l.get("DATA/HORA")) == dia]
         resultado.vendas_no_dia += len(do_dia)
+        resultado.usados.append(arquivo)
         resultado.arquivos.append((arquivo.name, NOMES_DOS_TIPOS["esteira"],
                                    f"{len(do_dia)} de {len(linhas)} proposta(s) com data {dia:%d/%m/%Y}"))
         for linha in do_dia:
@@ -453,6 +475,208 @@ def linhas_do_relatorio(resultado, mostrar_todos=MOSTRAR_TODOS):
 
 
 # ---------------------------------------------------------------------------
+# Histórico e comparação com o relatório anterior
+# ---------------------------------------------------------------------------
+
+COLUNAS_HISTORICO = ["Data", "Tipo", "Nome", "TMA (s)", "TMO (s)", "Leads", "Custo", "Vendas", "Clientes"]
+TIPOS_NO_HISTORICO = ("operador", "equipe", "total_operadores", "total_geral")
+
+
+def numero_br(valor, casas=2):
+    """1234.5 -> '1234,50' (vírgula decimal, para o Excel brasileiro abrir certo)."""
+    return f"{valor:.{casas}f}".replace(".", ",")
+
+
+def ler_historico(arquivo=ARQUIVO_HISTORICO):
+    """Lê historico/relatorio_ura.csv: lista de dicionários com os números já convertidos."""
+    arquivo = Path(arquivo)
+    if not arquivo.exists():
+        return []
+    with open(arquivo, encoding="utf-8-sig", newline="") as f:
+        return [{
+            "data": converter_data(l["Data"]), "tipo": l["Tipo"], "nome": l["Nome"],
+            "tma": int(converter_valor_br(l["TMA (s)"])), "tmo": int(converter_valor_br(l["TMO (s)"])),
+            "leads": int(converter_valor_br(l["Leads"])), "custo": converter_valor_br(l["Custo"]),
+            "vendas": converter_valor_br(l["Vendas"]), "clientes": int(converter_valor_br(l["Clientes"])),
+        } for l in csv.DictReader(f, delimiter=";")]
+
+
+def salvar_no_historico(dia, linhas, arquivo=ARQUIVO_HISTORICO):
+    """
+    Acrescenta os números do dia ao histórico (uma linha por operador, equipe e total).
+
+    Se o dia já estiver lá (relatório rodado de novo), as linhas antigas são substituídas.
+    """
+    arquivo = Path(arquivo)
+    anteriores = [r for r in ler_historico(arquivo) if r["data"] != dia]
+    novos = [{"data": dia, "tipo": l["tipo"], "nome": l["nome"], "tma": l.get("tma") or 0,
+              "tmo": l.get("tmo") or 0, "leads": l.get("leads") or 0, "custo": l.get("custo") or 0,
+              "vendas": l.get("vendas") or 0, "clientes": l.get("clientes") or 0}
+             for l in linhas if l["tipo"] in TIPOS_NO_HISTORICO]
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    with open(arquivo, "w", encoding="utf-8-sig", newline="") as f:
+        escritor = csv.writer(f, delimiter=";")
+        escritor.writerow(COLUNAS_HISTORICO)
+        for r in sorted(anteriores + novos, key=lambda r: r["data"]):
+            escritor.writerow([f"{r['data']:%d/%m/%Y}", r["tipo"], r["nome"], r["tma"], r["tmo"],
+                               r["leads"], numero_br(r["custo"]), numero_br(r["vendas"]), r["clientes"]])
+
+
+def comparar_com_anterior(linhas, historico, dia):
+    """
+    Acrescenta em cada linha a diferença em relação ao último relatório antes de `dia`:
+    d_leads, d_vendas e d_custo. Devolve a data comparada (ou None se não houver).
+
+    Quem não aparecia no relatório anterior fica sem comparação.
+    """
+    datas = sorted({r["data"] for r in historico if r["data"] and r["data"] < dia})
+    if not datas:
+        return None
+    anterior = datas[-1]
+    do_anterior = {(r["tipo"], normalizar_nome(r["nome"])): r for r in historico if r["data"] == anterior}
+    for linha in linhas:
+        antes = do_anterior.get((linha["tipo"], normalizar_nome(linha["nome"])))
+        if antes:
+            linha["d_leads"] = (linha.get("leads") or 0) - antes["leads"]
+            linha["d_vendas"] = (linha.get("vendas") or 0) - antes["vendas"]
+            linha["d_custo"] = (linha.get("custo") or 0) - antes["custo"]
+    return anterior
+
+
+# ---------------------------------------------------------------------------
+# Metas (semáforo verde / amarelo / vermelho)
+# ---------------------------------------------------------------------------
+
+# Nome do indicador na planilha de metas -> chave da coluna no relatório
+INDICADORES = {
+    "TMA": "tma", "TMO": "tmo", "LEADS ATENDIDOS/URA": "leads", "CUSTO TOTAL": "custo",
+    "VENDAS GERAL": "vendas", "CLIENTE EFETIVADOS": "clientes", "CUSTO POR CPF": "custo_cpf",
+    "PRODUCAO/LEAD": "prod_lead",
+}
+
+
+def criar_modelo_metas(arquivo=ARQUIVO_METAS):
+    """Cria config/metas.xlsx com os indicadores e os limites em branco, se ainda não existir."""
+    arquivo = Path(arquivo)
+    if arquivo.exists():
+        return False
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Metas"
+    ws.append(["Indicador", "Melhor quando", "Verde", "Vermelho"])
+    for celula in ws[1]:
+        preencher(celula, AZUL, BRANCO, True)
+    for indicador, sentido in [("TMA", "menor"), ("TMO", "menor"), ("LEADS ATENDIDOS/URA", "maior"),
+                               ("CUSTO TOTAL", "menor"), ("VENDAS GERAL", "maior"),
+                               ("CLIENTE EFETIVADOS", "maior"), ("CUSTO POR CPF", "menor"),
+                               ("PRODUÇÃO/LEAD", "maior")]:
+        ws.append([indicador, sentido, None, None])
+    instrucoes = [
+        "COMO PREENCHER",
+        "Deixe Verde e Vermelho em branco para não pintar aquele indicador.",
+        "Melhor quando = maior: verde se o valor for MAIOR OU IGUAL ao Verde;",
+        "   vermelho se for MENOR OU IGUAL ao Vermelho; amarelo no meio.",
+        "Melhor quando = menor: verde se o valor for MENOR OU IGUAL ao Verde;",
+        "   vermelho se for MAIOR OU IGUAL ao Vermelho; amarelo no meio.",
+        "TMA e TMO: escreva o tempo como 00:01:30 (ou em segundos: 90).",
+        "Valores em reais: só o número (ex.: 15000 ou 15000,50).",
+        "As cores valem para as linhas dos operadores.",
+    ]
+    for i, texto in enumerate(instrucoes, start=1):
+        ws.cell(i, 6, texto).font = Font(bold=(i == 1), color=AZUL if i == 1 else None)
+    for coluna, largura in zip("ABCDEF", (24, 16, 12, 12, 3, 70)):
+        ws.column_dimensions[coluna].width = largura
+    wb.save(arquivo)
+    return True
+
+
+def valor_da_meta(valor, chave):
+    """Converte o limite digitado na planilha de metas em número (segundos para TMA/TMO)."""
+    if valor is None or str(valor).strip() == "":
+        return None
+    if chave in ("tma", "tmo"):
+        if isinstance(valor, timedelta):
+            return valor.total_seconds()
+        if isinstance(valor, time):
+            return valor.hour * 3600 + valor.minute * 60 + valor.second
+        if isinstance(valor, datetime):
+            return valor.hour * 3600 + valor.minute * 60 + valor.second
+        if isinstance(valor, float) and valor < 1:  # o Excel guardou como fração do dia
+            return round(valor * 86400)
+        if ":" in str(valor):
+            return tempo_para_segundos(valor)
+    return converter_valor_br(valor)
+
+
+def ler_metas(arquivo=ARQUIVO_METAS):
+    """
+    Lê config/metas.xlsx: {chave: (sentido, verde, vermelho)}.
+
+    Só entram os indicadores com pelo menos um limite preenchido.
+    """
+    arquivo = Path(arquivo)
+    if not arquivo.exists():
+        return {}
+    metas = {}
+    wb = openpyxl.load_workbook(arquivo, read_only=True, data_only=True)
+    for linha in wb.worksheets[0].iter_rows(min_row=2, max_col=4, values_only=True):
+        indicador, sentido, verde, vermelho = (list(linha) + [None] * 4)[:4]
+        chave = INDICADORES.get(normalizar_nome(indicador))
+        if not chave:
+            continue
+        verde, vermelho = valor_da_meta(verde, chave), valor_da_meta(vermelho, chave)
+        if verde is None and vermelho is None:
+            continue
+        sentido = "menor" if normalizar_nome(sentido) == "MENOR" else "maior"
+        metas[chave] = (sentido, verde, vermelho)
+    return metas
+
+
+def cor_da_meta(valor, regra):
+    """'verde', 'amarelo' ou 'vermelho' para o valor, conforme a regra (sentido, verde, vermelho)."""
+    if valor is None or regra is None:
+        return None
+    sentido, verde, vermelho = regra
+    if sentido == "maior":
+        if verde is not None and valor >= verde:
+            return "verde"
+        if vermelho is not None and valor <= vermelho:
+            return "vermelho"
+    else:
+        if verde is not None and valor <= verde:
+            return "verde"
+        if vermelho is not None and valor >= vermelho:
+            return "vermelho"
+    return "amarelo"
+
+
+# ---------------------------------------------------------------------------
+# Arquivamento da pasta entrada/
+# ---------------------------------------------------------------------------
+
+def arquivar(arquivos, pasta_entrada, dia):
+    """
+    Move os arquivos usados para entrada/processados/AAAA-MM-DD/.
+
+    Assim a próxima execução não soma, por engano, a tarifação de hoje.
+    O conteúdo dos arquivos não é alterado. Devolve a pasta de destino.
+    """
+    destino = Path(pasta_entrada) / "processados" / f"{dia:%Y-%m-%d}"
+    destino.mkdir(parents=True, exist_ok=True)
+    for arquivo in dict.fromkeys(Path(a) for a in arquivos):  # sem repetidos, na ordem
+        if not arquivo.exists():
+            continue
+        alvo = destino / arquivo.name
+        n = 2
+        while alvo.exists():  # não sobrescreve: acrescenta _2, _3...
+            alvo = destino / f"{arquivo.stem}_{n}{arquivo.suffix}"
+            n += 1
+        shutil.move(str(arquivo), str(alvo))
+    return destino
+
+
+# ---------------------------------------------------------------------------
 # Planilha de saída
 # ---------------------------------------------------------------------------
 
@@ -466,6 +690,25 @@ COLUNAS = [  # (título, chave, formato)
     ("CUSTO POR CPF", "custo_cpf", '"R$ "#,##0.00'),
     ("PRODUÇÃO/LEAD", "prod_lead", '"R$ "#,##0.00'),
 ]
+# Colunas extras de comparação (só aparecem se houver relatório anterior no histórico).
+# ▲ = subiu, ▼ = desceu. A cor diz se foi bom (verde) ou ruim (vermelho):
+# leads e vendas subindo é bom; custo subindo é ruim.
+FORMATO_DIF_LEADS = '"▲ "#,##0;"▼ "#,##0;"="'
+FORMATO_DIF_REAIS = '"▲ R$ "#,##0.00;"▼ R$ "#,##0.00;"="'
+SUBIR_E_BOM = {"d_leads": True, "d_vendas": True, "d_custo": False}
+VERDE_TEXTO = "006100"
+VERMELHO_TEXTO = "C00000"
+
+
+def colunas_de_comparacao(data_anterior):
+    rotulo = f"{data_anterior:%d/%m}"
+    return [
+        (f"LEADS vs {rotulo}", "d_leads", FORMATO_DIF_LEADS),
+        (f"VENDAS vs {rotulo}", "d_vendas", FORMATO_DIF_REAIS),
+        (f"CUSTO vs {rotulo}", "d_custo", FORMATO_DIF_REAIS),
+    ]
+
+
 ESTILOS = {  # tipo de linha: (cor de fundo, cor da fonte, negrito)
     "operador": (None, None, False),
     "separador": (AMARELO, None, False),
@@ -482,19 +725,26 @@ def preencher(celula, cor_fundo=None, cor_fonte=None, negrito=False):
     celula.font = Font(bold=negrito, color=cor_fonte)
 
 
-def gerar_planilha(resultado, linhas, caminho):
-    """Cria o .xlsx do relatório (aba Relatório) e a aba Conferência."""
+def gerar_planilha(resultado, linhas, caminho, metas=None, data_anterior=None):
+    """
+    Cria o .xlsx do relatório (aba Relatório) e a aba Conferência.
+
+    metas: {chave: regra} para pintar as células dos operadores (semáforo).
+    data_anterior: se informada, acrescenta as colunas de comparação.
+    """
+    metas = metas or {}
+    colunas = COLUNAS + (colunas_de_comparacao(data_anterior) if data_anterior else [])
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Relatório"
-    ultima_coluna = 3 + len(COLUNAS)  # A = faixa azul, B = nomes, C..J = valores, K = faixa azul
+    ultima_coluna = 3 + len(colunas)  # A = faixa azul, B = nomes, C.. = valores, última = faixa azul
 
     # Título e cabeçalho
     ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=ultima_coluna - 1)
     ws.cell(2, 2, f"RELATORIO DE PRODUTIVIDADE URA {resultado.data:%d/%m/%Y}")
     ws.cell(2, 2).font = Font(bold=True, size=14, color=AZUL)
     ws.cell(2, 2).alignment = Alignment(horizontal="center")
-    for i, titulo in enumerate(["OPERADORES"] + [c[0] for c in COLUNAS]):
+    for i, titulo in enumerate(["OPERADORES"] + [c[0] for c in colunas]):
         celula = ws.cell(3, 2 + i, titulo)
         preencher(celula, AZUL, BRANCO, True)
         celula.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -506,15 +756,25 @@ def gerar_planilha(resultado, linhas, caminho):
         if linha["tipo"] == "operador" and n % 2 == 1:
             fundo = ZEBRA
         ws.cell(linha_excel, 2, linha["nome"])
-        for i, (_titulo, chave, formato) in enumerate(COLUNAS):
+        for coluna in range(2, ultima_coluna):
+            preencher(ws.cell(linha_excel, coluna), fundo, fonte, negrito)
+        for i, (_titulo, chave, formato) in enumerate(colunas):
             valor = linha.get(chave)
             celula = ws.cell(linha_excel, 3 + i)
             if valor is not None:
                 # Tempos vão como fração do dia, que é como o Excel guarda horas
                 celula.value = valor / 86400 if chave in ("tma", "tmo") else valor
                 celula.number_format = formato
-        for coluna in range(2, ultima_coluna):
-            preencher(ws.cell(linha_excel, coluna), fundo, fonte, negrito)
+            # Comparação: verde se melhorou, vermelho se piorou
+            if chave in SUBIR_E_BOM and valor and linha["tipo"] != "total_geral":
+                melhorou = (valor > 0) == SUBIR_E_BOM[chave]
+                celula.font = Font(bold=negrito, color=VERDE_TEXTO if melhorou else VERMELHO_TEXTO)
+            # Semáforo das metas, só nas linhas de operador
+            cor = cor_da_meta(valor, metas.get(chave)) if linha["tipo"] == "operador" else None
+            if cor:
+                fundo_meta, fonte_meta = SEMAFORO[cor]
+                celula.fill = PatternFill("solid", fgColor=fundo_meta)
+                celula.font = Font(color=fonte_meta, bold=True)
         linha_excel += 1
     # Faixa azul de fechamento e laterais (como no modelo)
     for coluna in range(1, ultima_coluna + 1):
@@ -525,8 +785,8 @@ def gerar_planilha(resultado, linhas, caminho):
 
     ws.column_dimensions["A"].width = 2
     ws.column_dimensions["B"].width = 44
-    for i in range(len(COLUNAS)):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(3 + i)].width = 15
+    for i, (_titulo, chave, _formato) in enumerate(colunas):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(3 + i)].width = 19 if chave == "leads" else 15
     ws.column_dimensions[openpyxl.utils.get_column_letter(ultima_coluna)].width = 2
     ws.row_dimensions[3].height = 45
     ws.freeze_panes = "C4"
@@ -571,6 +831,13 @@ def gerar_planilha(resultado, linhas, caminho):
     titulo("Ex-colaboradores ignorados (inativos no Argus)")
     for nome, origens in sorted(resultado.ex_colaboradores.items()):
         wc.append([nome, ", ".join(sorted(origens))])
+    titulo("Metas aplicadas (config/metas.xlsx)")
+    if not metas:
+        wc.append(["Nenhuma meta preenchida."])
+    nomes_das_colunas = {chave: titulo_coluna for titulo_coluna, chave, _ in COLUNAS}
+    for chave, (sentido, verde, vermelho) in metas.items():
+        wc.append([nomes_das_colunas[chave], f"melhor quando {sentido}",
+                   f"verde: {verde if verde is not None else '-'} | vermelho: {vermelho if vermelho is not None else '-'}"])
     titulo("Avisos")
     for aviso in resultado.avisos:
         wc.append([aviso])
@@ -587,6 +854,11 @@ def gerar_planilha(resultado, linhas, caminho):
 def moeda(valor):
     """1234.5 -> 'R$ 1.234,50'"""
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def sinal_moeda(valor):
+    """Diferença em reais com sinal: 150 -> '+R$ 150,00'; -20 -> '-R$ 20,00'."""
+    return ("+" if valor >= 0 else "-") + moeda(abs(valor))
 
 
 def baixar_do_argus_se_preciso(dia, entradas, pasta_entrada):
@@ -620,9 +892,13 @@ def main(argumentos=None):
     parser = argparse.ArgumentParser(description="Relatório diário de produtividade da URA.")
     parser.add_argument("--data", help="dia do relatório dd/mm/aaaa (padrão: último dia útil)")
     parser.add_argument("--sem-api", action="store_true", help="não baixa nada do Argus")
+    parser.add_argument("--arquivar", action="store_true",
+                        help="no final, move os arquivos usados para entrada/processados/AAAA-MM-DD/")
     parser.add_argument("--entrada", default=str(PASTA_ENTRADA), help=argparse.SUPPRESS)
     parser.add_argument("--saida", default=str(PASTA_SAIDA), help=argparse.SUPPRESS)
     parser.add_argument("--cadastro", default=str(ARQUIVO_CADASTRO), help=argparse.SUPPRESS)
+    parser.add_argument("--historico", default=str(ARQUIVO_HISTORICO), help=argparse.SUPPRESS)
+    parser.add_argument("--metas", default=str(ARQUIVO_METAS), help=argparse.SUPPRESS)
     args = parser.parse_args(argumentos)
 
     if args.data:
@@ -631,8 +907,7 @@ def main(argumentos=None):
         except ValueError:
             raise ValueError(f"Data inválida: {args.data}. Use o formato dd/mm/aaaa, ex.: 17/10/2026")
     else:
-        from argus_api import dia_util_anterior
-        dia = dia_util_anterior(date.today())
+        dia = dia_util_anterior(date.today(), ler_feriados())
 
     entrada = Path(args.entrada)
     if not entrada.exists():
@@ -651,11 +926,20 @@ def main(argumentos=None):
     resultado = calcular(dia, entradas, ativos, inativos, apelidos)
     for arquivo, _ in entradas["operadores"]:
         resultado.arquivos.append((arquivo.name, NOMES_DOS_TIPOS["operadores"], "cadastro"))
+        resultado.usados.append(arquivo)
     for arquivo in desconhecidos:
         resultado.arquivos.append((arquivo.name, "não reconhecido", "IGNORADO"))
     linhas = linhas_do_relatorio(resultado)
+
+    # Comparação com o relatório anterior e metas
+    data_anterior = comparar_com_anterior(linhas, ler_historico(args.historico), dia)
+    if criar_modelo_metas(args.metas):
+        print(f"Criado {args.metas}: preencha os limites para ativar o semáforo de metas.")
+    metas = ler_metas(args.metas)
+
     saida = Path(args.saida) / f"relatorio_produtividade_{dia:%Y-%m-%d}.xlsx"
-    gerar_planilha(resultado, linhas, saida)
+    gerar_planilha(resultado, linhas, saida, metas, data_anterior)
+    salvar_no_historico(dia, linhas, args.historico)
 
     # Resumo no terminal
     print(f"\nRELATÓRIO DE PRODUTIVIDADE URA — {dia:%d/%m/%Y}")
@@ -680,7 +964,29 @@ def main(argumentos=None):
               f"vendas {moeda(resultado.vendas_ignoradas)}")
     for aviso in resultado.avisos:
         print(f"AVISO: {aviso}")
+
+    if data_anterior:
+        print(f"\nComparado com {data_anterior:%d/%m/%Y}: "
+              f"leads {total.get('d_leads', 0):+d} | vendas {sinal_moeda(total.get('d_vendas', 0))} "
+              f"| custo {sinal_moeda(total.get('d_custo', 0))}")
+    else:
+        print("\nSem relatório anterior no histórico: a comparação aparece a partir do próximo.")
+    if metas:
+        contagem = {"verde": 0, "amarelo": 0, "vermelho": 0}
+        for linha in linhas:
+            if linha["tipo"] == "operador":
+                for chave, regra in metas.items():
+                    cor = cor_da_meta(linha.get(chave), regra)
+                    if cor:
+                        contagem[cor] += 1
+        print(f"Metas: {contagem['verde']} verde(s), {contagem['amarelo']} amarela(s), "
+              f"{contagem['vermelho']} vermelha(s)")
+
     print(f"\nRelatório: {saida}")
+    print(f"Histórico: {args.historico}")
+    if args.arquivar:
+        destino = arquivar(resultado.usados, entrada, dia)
+        print(f"Arquivos usados movidos para: {destino}")
     return 0
 
 

@@ -17,7 +17,7 @@ O token da API fica SÓ no seu computador, em config/argus_token.txt
 
 Como usar:
   python argus_api.py                    -> baixa os dados do último dia útil
-                                            (ontem; na segunda-feira, a sexta)
+                                            (ontem; na segunda-feira, a sexta; pula feriados)
   python argus_api.py --data 17/10/2026  -> baixa os dados de outro dia
   python argus_api.py --diagnostico      -> mostra os grupos e os NOMES dos campos que a API devolve
   python argus_api.py --bruto            -> grava as linhas do desempenho como vieram (conferência)
@@ -32,9 +32,10 @@ import sys
 import urllib.error
 import urllib.request
 import warnings
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
+from calendario import dia_util_anterior, ler_feriados
 from leitura import normalizar_nome
 
 # ---------------------------------------------------------------------------
@@ -169,19 +170,6 @@ def chamar_api(caminho, corpo, token):
     if dados.get("codStatus", 1) < 1:
         raise ErroArgus(f"O Argus devolveu uma falha em {caminho}: {dados.get('descStatus')}")
     return dados
-
-
-def dia_util_anterior(hoje):
-    """
-    Último dia útil antes de `hoje` (segunda a sexta).
-
-    Segunda-feira -> sexta; sábado e domingo -> sexta; outros dias -> ontem.
-    Feriados não são considerados: nesses casos use --data.
-    """
-    dia = hoje - timedelta(days=1)
-    while dia.weekday() >= 5:  # 5 = sábado, 6 = domingo
-        dia -= timedelta(days=1)
-    return dia
 
 
 def periodo_do_dia(dia):
@@ -475,7 +463,7 @@ def main(argumentos=None):
     args = parser.parse_args(argumentos)
 
     try:
-        dia = datetime.strptime(args.data, "%d/%m/%Y").date() if args.data else dia_util_anterior(date.today())
+        dia = datetime.strptime(args.data, "%d/%m/%Y").date() if args.data else dia_util_anterior(date.today(), ler_feriados())
     except ValueError:
         raise ErroArgus(f"Data inválida: {args.data}. Use o formato dd/mm/aaaa, ex.: 17/10/2026")
 
