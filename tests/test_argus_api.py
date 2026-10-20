@@ -170,10 +170,20 @@ def test_diagnostico_mostra_nomes_dos_campos_e_nao_os_dados(api_falsa, capsys):
     assert "ANA TESTE" not in saida
 
 
-def test_ontem_e_o_padrao(api_falsa, tmp_path, monkeypatch):
+@pytest.mark.parametrize("hoje, esperado", [
+    (date(2026, 10, 19), date(2026, 10, 16)),  # segunda -> sexta
+    (date(2026, 10, 20), date(2026, 10, 19)),  # terça -> segunda
+    (date(2026, 10, 24), date(2026, 10, 23)),  # sábado -> sexta
+    (date(2026, 10, 25), date(2026, 10, 23)),  # domingo -> sexta
+])
+def test_dia_util_anterior(hoje, esperado):
+    assert ap.dia_util_anterior(hoje) == esperado
+
+
+def test_ultimo_dia_util_e_o_padrao(api_falsa, tmp_path, monkeypatch):
     monkeypatch.setattr(ap, "ARQUIVO_TOKEN", tmp_path / "t.txt")
     monkeypatch.setattr(ap, "PASTA_ENTRADA", tmp_path / "entrada")
     monkeypatch.setenv("ARGUS_TOKEN", "token-falso")
     ap.main([])
-    ontem = date.today().toordinal() - 1
-    assert any(date.fromordinal(ontem).strftime("%Y-%m-%d") in p.name for p in (tmp_path / "entrada").iterdir())
+    esperado = ap.dia_util_anterior(date.today()).strftime("%Y-%m-%d")
+    assert any(esperado in p.name for p in (tmp_path / "entrada").iterdir())

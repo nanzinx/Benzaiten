@@ -1,7 +1,7 @@
 """
 Baixa da API do Argus os dados do relatório da URA e salva em entrada/.
 
-O que é baixado (referência: ONTEM, ou a data informada):
+O que é baixado (referência: o último dia útil, ou a data informada):
   - Desempenho dos operadores (TMA e TME) ......... entrada/argus_desempenho_AAAA-MM-DD.csv
   - Leads atendidos do grupo RECEPTIVO - URA ....... entrada/argus_leads_ura_AAAA-MM-DD.csv
   - Cadastro de operadores (nome, grupo, supervisor) entrada/argus_operadores_AAAA-MM-DD.csv
@@ -16,7 +16,8 @@ O token da API fica SÓ no seu computador, em config/argus_token.txt
 (ou na variável de ambiente ARGUS_TOKEN). Nunca envie esse arquivo para ninguém.
 
 Como usar:
-  python argus_api.py                    -> baixa os dados de ontem
+  python argus_api.py                    -> baixa os dados do último dia útil
+                                            (ontem; na segunda-feira, a sexta)
   python argus_api.py --data 17/10/2026  -> baixa os dados de outro dia
   python argus_api.py --diagnostico      -> mostra os grupos e os NOMES dos campos que a API devolve
 """
@@ -117,6 +118,19 @@ def chamar_api(caminho, corpo, token):
     if dados.get("codStatus", 1) < 1:
         raise ErroArgus(f"O Argus devolveu uma falha em {caminho}: {dados.get('descStatus')}")
     return dados
+
+
+def dia_util_anterior(hoje):
+    """
+    Último dia útil antes de `hoje` (segunda a sexta).
+
+    Segunda-feira -> sexta; sábado e domingo -> sexta; outros dias -> ontem.
+    Feriados não são considerados: nesses casos use --data.
+    """
+    dia = hoje - timedelta(days=1)
+    while dia.weekday() >= 5:  # 5 = sábado, 6 = domingo
+        dia -= timedelta(days=1)
+    return dia
 
 
 def periodo_do_dia(dia):
@@ -340,12 +354,12 @@ def baixar(dia, token, pasta=PASTA_ENTRADA):
 
 def main(argumentos=None):
     parser = argparse.ArgumentParser(description="Baixa os dados do Argus para o relatório da URA.")
-    parser.add_argument("--data", help="dia de referência dd/mm/aaaa (padrão: ontem)")
+    parser.add_argument("--data", help="dia de referência dd/mm/aaaa (padrão: último dia útil)")
     parser.add_argument("--diagnostico", action="store_true", help="mostra grupos e nomes dos campos, sem gravar nada")
     args = parser.parse_args(argumentos)
 
     try:
-        dia = datetime.strptime(args.data, "%d/%m/%Y").date() if args.data else date.today() - timedelta(days=1)
+        dia = datetime.strptime(args.data, "%d/%m/%Y").date() if args.data else dia_util_anterior(date.today())
     except ValueError:
         raise ErroArgus(f"Data inválida: {args.data}. Use o formato dd/mm/aaaa, ex.: 17/10/2026")
 

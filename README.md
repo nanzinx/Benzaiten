@@ -168,7 +168,7 @@ Ele mostra os grupos operacionais e os **nomes** dos campos que o Argus devolve
 python argus_api.py
 ```
 
-Baixa os dados de **ontem** e grava em `entrada\`:
+Baixa os dados do **último dia útil** (ontem; na segunda-feira, a sexta) e grava em `entrada\`:
 
 | Arquivo | Conteúdo |
 |---|---|
@@ -176,7 +176,7 @@ Baixa os dados de **ontem** e grava em `entrada\`:
 | `argus_leads_ura_AAAA-MM-DD.csv` | Data, Operador, Supervisor, Leads. Atend. (grupo RECEPTIVO - URA) |
 | `argus_operadores_AAAA-MM-DD.csv` | Cadastro de operadores (sem CPF, e-mail, login, RE e ramal) |
 
-Para outro dia: `python argus_api.py --data 17/10/2026`.
+Para outro dia (por exemplo, depois de um feriado): `python argus_api.py --data 17/10/2026`.
 
 > A **tarifação** (custos VENDITORE e 4NET) **não existe na API** do Argus.
 > Continue exportando à mão: Argus > Tarifação > Painel de Visualização, para `entrada\`.
