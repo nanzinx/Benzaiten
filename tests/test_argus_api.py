@@ -233,3 +233,39 @@ def test_token_recusado_vira_mensagem_clara(monkeypatch):
     monkeypatch.setattr(ap, "abrir", abrir_falso)
     with pytest.raises(ap.ErroArgus, match="token"):
         ap.chamar_api("cmd/listargrupos", {}, "token-falso")
+
+
+# --- Várias linhas por operador (como o Argus devolve de verdade) -------------
+
+def test_linhas_do_mesmo_operador_viram_uma_com_media_ponderada():
+    registros = [
+        # ANA: 10 atendimentos com TMA 60s e 30 com TMA 20s -> (600 + 600) / 40 = 30s
+        {"nomeUsuario": "ANA", "tempoMedioAtendimento": 60, "tempoMedioEspera": 100, "qtdeAtendimentoTotal": 10},
+        {"nomeUsuario": "ANA", "tempoMedioAtendimento": 20, "tempoMedioEspera": 20, "qtdeAtendimentoTotal": 30},
+        {"nomeUsuario": "BRUNO", "tempoMedioAtendimento": 45, "tempoMedioEspera": 15, "qtdeAtendimentoTotal": 5},
+    ]
+    linhas = ap.linhas_desempenho(registros, DIA, {"ANA": "SUP A"})
+    assert linhas == [
+        ["19/10/2026", "ANA", "SUP A", "00:00:40", "00:00:30"],  # TME = (1000 + 600) / 40
+        ["19/10/2026", "BRUNO", "", "00:00:15", "00:00:45"],
+    ]
+
+
+def test_sessao_sem_atendimento_nao_puxa_a_media_para_baixo():
+    registros = [
+        {"nomeUsuario": "ANA", "tempoMedioAtendimento": 50, "tempoMedioEspera": 10, "qtdeAtendimentoTotal": 8},
+        {"nomeUsuario": "ANA", "tempoMedioAtendimento": 0, "tempoMedioEspera": 0, "qtdeAtendimentoTotal": 0},
+    ]
+    assert ap.linhas_desempenho(registros, DIA, {})[0][3:] == ["00:00:10", "00:00:50"]
+
+
+def test_leads_da_ura_somam_atendimentos_de_todas_as_linhas():
+    registros = [{"nomeUsuario": "ANA", "qtdeAtendimentoTotal": 12, "qtdeAtendimentoManual": 1},
+                 {"nomeUsuario": "ANA", "qtdeAtendimentoTotal": 5, "qtdeAtendimentoManual": 0}]
+    assert ap.linhas_leads([registros], DIA, {}) == [["19/10/2026", "ANA", "", 17]]
+
+
+def test_bruto_grava_todas_as_colunas(api_falsa, tmp_path):
+    arquivos = ap.gravar_bruto(DIA, "token-falso", tmp_path)
+    assert [a.name for a in arquivos] == ["argus_bruto_geral_2026-10-19.csv", "argus_bruto_grupo50_2026-10-19.csv"]
+    assert ler(arquivos[0])[0] == ["nomeUsuario", "tma", "tme", "qtdeLeadsAtendidos"]

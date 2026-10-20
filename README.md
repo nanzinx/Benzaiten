@@ -186,6 +186,14 @@ Baixa os dados do **último dia útil** (ontem; na segunda-feira, a sexta) e gra
 
 Para outro dia (por exemplo, depois de um feriado): `python argus_api.py --data 17/10/2026`.
 
+O Argus devolve várias linhas por operador (uma por sessão/grupo). O script junta
+em uma linha por operador: TMA e TME são a média das linhas, ponderada pela
+quantidade de atendimentos; os leads da URA são a soma dos atendimentos no grupo
+RECEPTIVO - URA.
+
+Para conferir os números, `python argus_api.py --bruto` grava as linhas exatamente
+como vieram do Argus (`argus_bruto_*.csv`).
+
 > A **tarifação** (custos VENDITORE e 4NET) **não existe na API** do Argus.
 > Continue exportando à mão: Argus > Tarifação > Painel de Visualização, para `entrada\`.
 
