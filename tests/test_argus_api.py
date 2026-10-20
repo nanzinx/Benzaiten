@@ -109,6 +109,14 @@ def test_token_lido_do_arquivo_sem_espacos(tmp_path, monkeypatch):
     assert ap.ler_token(arquivo) == "abc123"
 
 
+@pytest.mark.parametrize("codificacao", ["utf-8", "utf-8-sig", "utf-16"])
+def test_token_gravado_pelo_bloco_de_notas_ou_powershell(tmp_path, monkeypatch, codificacao):
+    monkeypatch.delenv("ARGUS_TOKEN", raising=False)
+    arquivo = tmp_path / "argus_token.txt"
+    arquivo.write_text("abc123\r\n", encoding=codificacao)
+    assert ap.ler_token(arquivo) == "abc123"
+
+
 def test_leads_de_varios_grupos_ura_sao_somados():
     linhas = ap.linhas_leads(
         [[{"nomeUsuario": "ANA", "leadsAtendidos": 10}], [{"nomeUsuario": "Ána", "leadsAtendidos": 5}]],

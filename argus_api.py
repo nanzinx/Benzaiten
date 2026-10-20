@@ -75,7 +75,13 @@ def ler_token(arquivo=ARQUIVO_TOKEN):
     """Lê o token da variável ARGUS_TOKEN ou do arquivo config/argus_token.txt."""
     token = os.environ.get("ARGUS_TOKEN", "").strip()
     if not token and Path(arquivo).exists():
-        token = Path(arquivo).read_text(encoding="utf-8").strip()
+        bruto = Path(arquivo).read_bytes()
+        # O PowerShell pode gravar em UTF-16 e o Bloco de Notas antigo coloca um
+        # caractere invisível (BOM) no início; os dois casos são tratados aqui.
+        if bruto.startswith((b"\xff\xfe", b"\xfe\xff")):
+            token = bruto.decode("utf-16").strip()
+        else:
+            token = bruto.decode("utf-8-sig").strip()
     if not token:
         raise ErroArgus(
             "Token da API não encontrado.\n"
