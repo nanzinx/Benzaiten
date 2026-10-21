@@ -8,6 +8,8 @@ O que é feito em cada tipo de arquivo (identificado pelas colunas, não pelo no
   - Esteira do Vanguard (tem CPF, Etapa e Agente):
       CPF do cliente vira um código (CLIENTE-000001). O mesmo CPF recebe sempre
       o mesmo código, então dá para contar clientes únicos.
+      O número da proposta também vira um código (PROPOSTA-000001), para ainda
+      dar para achar a mesma proposta nas duas esteiras (andamento e pagamento).
       Só ficam as colunas da lista COLUNAS_ESTEIRA; as outras (nome do cliente,
       benefício, salário, contrato, CPF do agente etc.) ficam vazias.
   - Cadastro de operadores do Argus (tem Nome, Supervisor(es) e Status):
@@ -63,13 +65,30 @@ def tipo_do_arquivo(cabecalho):
     return "outro"
 
 
-def anonimizar_linhas(cabecalho, linhas, tipo, codigos_cpf):
+# Colunas da esteira que viram código (o mesmo valor recebe sempre o mesmo código)
+COLUNAS_CODIFICADAS = {"PROPOSTA": "PROPOSTA", "NUMERO-PROPOSTA": "PROPOSTA"}
+
+
+def codificar(valor, prefixo, codigos):
+    """Troca o valor por PREFIXO-000001; o mesmo valor recebe sempre o mesmo código."""
+    valor = str(valor).strip()
+    if not valor:
+        return ""
+    chave = (prefixo, valor)
+    if chave not in codigos:
+        codigos[chave] = f"{prefixo}-{sum(1 for p, _ in codigos if p == prefixo) + 1:06d}"
+    return codigos[chave]
+
+
+def anonimizar_linhas(cabecalho, linhas, tipo, codigos_cpf, codigos_proposta=None):
     """
     Devolve as linhas anonimizadas.
 
     `codigos_cpf` é um dicionário {cpf: código} compartilhado entre os arquivos,
-    para o mesmo CPF ter o mesmo código em todos eles.
+    para o mesmo CPF ter o mesmo código em todos eles. `codigos_proposta` faz o
+    mesmo com o número da proposta.
     """
+    codigos_proposta = {} if codigos_proposta is None else codigos_proposta
     if tipo == "outro":
         return [list(linha) for linha in linhas]
 
@@ -87,6 +106,8 @@ def anonimizar_linhas(cabecalho, linhas, tipo, codigos_cpf):
                     nova.append(codigos_cpf[cpf])
                 else:
                     nova.append("")
+            elif tipo == "esteira" and coluna in COLUNAS_CODIFICADAS:
+                nova.append(codificar(valor, COLUNAS_CODIFICADAS[coluna], codigos_proposta))
             elif coluna in permitidas:
                 nova.append(valor)
             else:
@@ -110,7 +131,7 @@ def procurar_dados_sensiveis(cabecalho, linhas):
     return achados
 
 
-def anonimizar_arquivo(origem, pasta_destino, codigos_cpf):
+def anonimizar_arquivo(origem, pasta_destino, codigos_cpf, codigos_proposta=None):
     """Anonimiza um CSV e grava a cópia em pasta_destino. Devolve um resumo."""
     origem = Path(origem)
     destino = Path(pasta_destino) / origem.name
@@ -119,7 +140,7 @@ def anonimizar_arquivo(origem, pasta_destino, codigos_cpf):
 
     cabecalho, linhas, codificacao = ler_csv(origem)
     tipo = tipo_do_arquivo(cabecalho)
-    novas = anonimizar_linhas(cabecalho, linhas, tipo, codigos_cpf)
+    novas = anonimizar_linhas(cabecalho, linhas, tipo, codigos_cpf, codigos_proposta)
 
     # Grava com a mesma codificação e separador do original
     destino.parent.mkdir(parents=True, exist_ok=True)
@@ -151,10 +172,11 @@ def main(argumentos=None):
         return 1
 
     codigos_cpf = {}
+    codigos_proposta = {}  # o mesmo número de proposta recebe o mesmo código em todos os arquivos
     tem_problema = False
     print("\nANONIMIZAÇÃO")
     for caminho in arquivos:
-        resumo = anonimizar_arquivo(caminho, PASTA_ANONIMIZADOS, codigos_cpf)
+        resumo = anonimizar_arquivo(caminho, PASTA_ANONIMIZADOS, codigos_cpf, codigos_proposta)
         print(f"- {resumo['arquivo']}: {resumo['tipo']}, {resumo['linhas']} linhas -> {resumo['destino']}")
         if resumo["suspeitos"]:
             tem_problema = True

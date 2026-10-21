@@ -5,8 +5,9 @@ O que acontece, em ordem:
   1. Prepara os arquivos de configuração que ainda não existem (feriados e metas).
   2. Confere a pasta entrada/ e diz o que está faltando.
   3. Sorteia a escala de bases de HOJE (se hoje for dia útil e ainda não houver sorteio).
-  4. Gera o relatório da URA do último dia útil e arquiva os arquivos usados
-     em entrada/processados/AAAA-MM-DD/.
+  4. Gera o relatório da URA do último dia útil.
+  5. Gera o ranking de contratos pagos (vendedores e supervisores).
+  6. Se tudo deu certo, arquiva os arquivos usados em entrada/processados/AAAA-MM-DD/.
 
 Se uma etapa der erro, as outras continuam e o resumo final mostra o que falhou.
 
@@ -15,8 +16,9 @@ Como usar (ou dê dois cliques em BENZAITEN.bat):
   python benzaiten.py --ausentes "FULANO, BELTRANO"   -> ausentes na escala de hoje
   python benzaiten.py --data 17/10/2026               -> relatório de outro dia
   python benzaiten.py --nao-arquivar                  -> deixa os arquivos em entrada/
-  python benzaiten.py --sem-escala                    -> só o relatório
-  python benzaiten.py --sem-relatorio                 -> só a escala
+  python benzaiten.py --sem-escala                    -> sem a escala
+  python benzaiten.py --sem-relatorio                 -> sem o relatório da URA
+  python benzaiten.py --sem-ranking                   -> sem o ranking de vendas
   python benzaiten.py --sem-api                       -> não baixa nada do Argus
 """
 
@@ -26,6 +28,7 @@ from datetime import date, datetime
 
 import calendario
 import escala_bases
+import ranking_vendas
 import relatorio_ura
 from leitura import converter_data
 
@@ -64,9 +67,12 @@ def conferir_entrada(dia_relatorio):
 
     esteiras = len(entradas["esteira"])
     tarifacoes = len(entradas["tarifacao"])
-    print(f"  {'OK' if esteiras else '--'}  Esteira do Vanguard: {esteiras} arquivo(s)")
+    print(f"  {'OK' if esteiras == 2 else '!!' if esteiras else '--'}  "
+          f"Esteiras do Vanguard (andamento + pagamento): {esteiras} arquivo(s)")
     if not esteiras:
-        pendencias.append("exportar a esteira do Vanguard para entrada/")
+        pendencias.append("exportar as esteiras do Vanguard (data de andamento e data de pagamento) para entrada/")
+    elif esteiras == 1:
+        pendencias.append("só há 1 esteira em entrada/: o ranking precisa da de andamento E da de pagamento")
     print(f"  {'OK' if tarifacoes == 2 else '!!'}  Tarifações (VENDITORE + 4NET): {tarifacoes} arquivo(s)")
     if tarifacoes < 2:
         pendencias.append("exportar as tarifações VENDITORE e 4NET para entrada/")
@@ -114,17 +120,17 @@ def rodar_escala(hoje, ausentes):
     return "sorteada"
 
 
-def rodar_relatorio(data, sem_api, arquivar):
+def rodar_relatorio(data, sem_api, usados):
     """Gera o relatório da URA. Devolve uma frase de resumo."""
-    argumentos = []
-    if data:
-        argumentos += ["--data", data]
-    if sem_api:
-        argumentos.append("--sem-api")
-    if arquivar:
-        argumentos.append("--arquivar")
-    relatorio_ura.main(argumentos)
-    return "gerado" + (" e arquivos arquivados" if arquivar else "")
+    argumentos = ["--data", data] + (["--sem-api"] if sem_api else [])
+    relatorio_ura.main(argumentos, usados)
+    return "gerado"
+
+
+def rodar_ranking(data, hoje, usados):
+    """Gera o ranking de contratos pagos. Devolve uma frase de resumo."""
+    ranking_vendas.main(["--data", data, "--hoje", f"{hoje:%d/%m/%Y}"], usados)
+    return "gerado"
 
 
 def main(argumentos=None):
@@ -134,7 +140,8 @@ def main(argumentos=None):
     parser.add_argument("--sem-api", action="store_true", help="não baixa nada do Argus")
     parser.add_argument("--nao-arquivar", action="store_true", help="deixa os arquivos usados em entrada/")
     parser.add_argument("--sem-escala", action="store_true", help="não sorteia a escala")
-    parser.add_argument("--sem-relatorio", action="store_true", help="não gera o relatório")
+    parser.add_argument("--sem-relatorio", action="store_true", help="não gera o relatório da URA")
+    parser.add_argument("--sem-ranking", action="store_true", help="não gera o ranking de vendas")
     parser.add_argument("--hoje", help=argparse.SUPPRESS)  # usado nos testes
     args = parser.parse_args(argumentos)
 
@@ -153,17 +160,20 @@ def main(argumentos=None):
     preparar_configuracao()
     resumo = {}
 
-    if not args.sem_relatorio:
+    if not (args.sem_relatorio and args.sem_ranking):
         titulo("1. Conferindo a pasta entrada/")
         pendencias = conferir_entrada(dia_relatorio)
         for pendencia in pendencias:
             print(f"  PENDENTE: {pendencia}")
 
+    usados = []  # arquivos de entrada/ usados pelo relatório e pelo ranking
     etapas = []
     if not args.sem_escala:
         etapas.append(("Escala de bases", lambda: rodar_escala(hoje, args.ausentes)))
     if not args.sem_relatorio:
-        etapas.append(("Relatório da URA", lambda: rodar_relatorio(args.data, args.sem_api, not args.nao_arquivar)))
+        etapas.append(("Relatório da URA", lambda: rodar_relatorio(args.data, args.sem_api, usados)))
+    if not args.sem_ranking:
+        etapas.append(("Ranking de vendas", lambda: rodar_ranking(args.data, hoje, usados)))
 
     for numero, (nome, etapa) in enumerate(etapas, start=2):
         titulo(f"{numero}. {nome}")
@@ -175,6 +185,17 @@ def main(argumentos=None):
         except (FileNotFoundError, ValueError) as erro:
             print(f"ERRO: {erro}")
             resumo[nome] = ("ERRO", str(erro).splitlines()[0])
+
+    # Arquiva só se o relatório e o ranking deram certo (senão, dá para rodar de novo)
+    if usados and not args.nao_arquivar:
+        falhou = [nome for nome, (situacao, _) in resumo.items() if situacao == "ERRO" and nome != "Escala de bases"]
+        if falhou:
+            print(f"\nArquivos NÃO arquivados porque houve erro em: {', '.join(falhou)}. Corrija e rode de novo.")
+            resumo["Arquivamento"] = ("--", "não feito (houve erro)")
+        else:
+            destino = relatorio_ura.arquivar(usados, relatorio_ura.PASTA_ENTRADA, dia_relatorio)
+            print(f"\nArquivos usados movidos para: {destino}")
+            resumo["Arquivamento"] = ("OK", f"entrada/processados/{dia_relatorio:%Y-%m-%d}")
 
     titulo("Resumo")
     for nome, (situacao, detalhe) in resumo.items():

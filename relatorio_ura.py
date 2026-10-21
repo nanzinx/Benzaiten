@@ -47,6 +47,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from calendario import dia_util_anterior, ler_feriados
+from esteira import nome_do_agente, remover_propostas_repetidas
 from leitura import (converter_data, converter_valor_br, limpar_cabecalho, ler_tabela,
                      normalizar_nome, tempo_para_segundos)
 
@@ -380,29 +381,32 @@ def calcular(dia, entradas, ativos, inativos, apelidos):
             "atendido para fazer o rateio. Esse custo ficou fora do relatório.")
 
     # 5. Vendas e clientes efetivados (esteira do Vanguard)
-    if len(entradas["esteira"]) > 1:
-        resultado.avisos.append("Há mais de uma esteira em entrada/: as vendas foram somadas. "
-                                "Confira se não é o mesmo arquivo duas vezes.")
+    # Podem vir duas esteiras (data de andamento e data de pagamento): junta as duas
+    # e conta cada proposta uma vez só.
+    todas = []
     for arquivo, linhas in entradas["esteira"]:
-        do_dia = [l for l in linhas if converter_data(l.get("DATA/HORA")) == dia]
-        resultado.vendas_no_dia += len(do_dia)
         resultado.usados.append(arquivo)
-        resultado.arquivos.append((arquivo.name, NOMES_DOS_TIPOS["esteira"],
-                                   f"{len(do_dia)} de {len(linhas)} proposta(s) com data {dia:%d/%m/%Y}"))
-        for linha in do_dia:
-            etapa = normalizar_nome(linha.get("ETAPA"))
-            if etapa not in ETAPAS_VENDA and etapa not in ETAPAS_CLIENTE:
-                continue
-            valor = converter_valor_br(linha.get(COLUNA_VALOR_VENDA))
-            op = vincular.operador(linha.get("AGENTE"), "Vanguard")
-            if op is None:
-                if etapa in ETAPAS_VENDA:
-                    resultado.vendas_ignoradas += valor
-                continue
+        resultado.arquivos.append((arquivo.name, NOMES_DOS_TIPOS["esteira"], f"{len(linhas)} proposta(s)"))
+        todas += linhas
+    propostas, repetidas = remover_propostas_repetidas(todas)
+    if repetidas:
+        resultado.avisos.append(f"{repetidas} proposta(s) estavam em mais de uma esteira e foram contadas uma vez só.")
+    do_dia = [l for l in propostas if converter_data(l.get("DATA/HORA")) == dia]
+    resultado.vendas_no_dia = len(do_dia)
+    for linha in do_dia:
+        etapa = normalizar_nome(linha.get("ETAPA"))
+        if etapa not in ETAPAS_VENDA and etapa not in ETAPAS_CLIENTE:
+            continue
+        valor = converter_valor_br(linha.get(COLUNA_VALOR_VENDA))
+        op = vincular.operador(nome_do_agente(linha.get("AGENTE")), "Vanguard")
+        if op is None:
             if etapa in ETAPAS_VENDA:
-                op.vendas += valor
-            if etapa in ETAPAS_CLIENTE and str(linha.get("CPF", "")).strip():
-                op.cpfs.add(str(linha["CPF"]).strip())
+                resultado.vendas_ignoradas += valor
+            continue
+        if etapa in ETAPAS_VENDA:
+            op.vendas += valor
+        if etapa in ETAPAS_CLIENTE and str(linha.get("CPF", "")).strip():
+            op.cpfs.add(str(linha["CPF"]).strip())
 
     # Conferências
     if not entradas["desempenho"] or not any(op.tem_desempenho for op in operadores.values()):
@@ -899,7 +903,11 @@ def baixar_do_argus_se_preciso(dia, entradas, pasta_entrada):
     return True
 
 
-def main(argumentos=None):
+def main(argumentos=None, usados=None):
+    """
+    `usados`: se for uma lista, recebe os arquivos de entrada/ usados no relatório
+    (o benzaiten.py usa isso para arquivar tudo no final da rotina).
+    """
     parser = argparse.ArgumentParser(description="Relatório diário de produtividade da URA.")
     parser.add_argument("--data", help="dia do relatório dd/mm/aaaa (padrão: último dia útil)")
     parser.add_argument("--sem-api", action="store_true", help="não baixa nada do Argus")
@@ -999,6 +1007,8 @@ def main(argumentos=None):
 
     print(f"\nRelatório: {saida}")
     print(f"Histórico: {args.historico}")
+    if usados is not None:
+        usados.extend(resultado.usados)
     if args.arquivar:
         destino = arquivar(resultado.usados, entrada, dia)
         print(f"Arquivos usados movidos para: {destino}")

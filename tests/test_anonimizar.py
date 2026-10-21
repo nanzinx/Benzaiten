@@ -75,8 +75,10 @@ def test_esteira_troca_cpf_por_codigo_e_apaga_dados_do_cliente(tmp_path):
 
     # O mesmo CPF (com ou sem pontuação) vira o mesmo código
     assert [l[coluna["CPF"]] for l in linhas] == ["CLIENTE-000001", "CLIENTE-000001", "CLIENTE-000002"]
+    # O número da proposta vira código (para achar a mesma proposta nas duas esteiras)
+    assert [l[coluna["Proposta"]] for l in linhas] == ["PROPOSTA-000001", "PROPOSTA-000002", "PROPOSTA-000003"]
     # Dados do cliente e do agente apagados
-    for nome in ["Proposta", "Nome", "Beneficio", "CPF Agente", "Acompanhamento"]:
+    for nome in ["Nome", "Beneficio", "CPF Agente", "Acompanhamento"]:
         assert all(l[coluna[nome]] == "" for l in linhas), nome
     # O que o relatório usa continua igual
     assert [l[coluna["Valor Contrato"]] for l in linhas] == ["1.500,00", "800,00", "300,00"]
@@ -84,6 +86,19 @@ def test_esteira_troca_cpf_por_codigo_e_apaga_dados_do_cliente(tmp_path):
     assert cabecalho == CABECALHO_ESTEIRA            # mesma estrutura de colunas
     assert resumo["suspeitos"] == {}
     assert origem.read_bytes() == original             # original não foi alterado
+
+
+def test_mesma_proposta_recebe_o_mesmo_codigo_nas_duas_esteiras(tmp_path):
+    andamento, pagamento = tmp_path / "andamento.csv", tmp_path / "pagamento.csv"
+    escrever_csv(andamento, [CABECALHO_ESTEIRA, ["777", "01/10/2026", "Andamento", "11122233344", "X", "", "A", "E", "1", "", ""]])
+    escrever_csv(pagamento, [CABECALHO_ESTEIRA, ["888", "02/10/2026", "Pago", "55566677788", "Y", "", "A", "E", "1", "", ""],
+                             CABECALHO_ESTEIRA[:0] + ["777", "01/10/2026", "Pago", "11122233344", "X", "", "A", "E", "1", "", ""]])
+    codigos_cpf, codigos_proposta = {}, {}
+    destino = tmp_path / "anon"
+    an.anonimizar_arquivo(andamento, destino, codigos_cpf, codigos_proposta)
+    an.anonimizar_arquivo(pagamento, destino, codigos_cpf, codigos_proposta)
+    assert [l[0] for l in ler_csv(destino / "andamento.csv")[1]] == ["PROPOSTA-000001"]
+    assert [l[0] for l in ler_csv(destino / "pagamento.csv")[1]] == ["PROPOSTA-000002", "PROPOSTA-000001"]
 
 
 def test_operadores_mantem_nome_e_supervisor_e_apaga_cpf_e_email(tmp_path):
