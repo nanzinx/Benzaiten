@@ -30,8 +30,12 @@ GRUPOS = [
 ]
 # Campos com nomes "inventados" para testar o reconhecimento automático
 DESEMPENHO = [
-    {"nomeUsuario": "ANA TESTE", "tma": 56, "tme": 47, "qtdeLeadsAtendidos": 0},
-    {"nomeUsuario": "BRUNO TESTE", "tma": "00:01:30", "tme": 3725, "qtdeLeadsAtendidos": 0},
+    {"data": "2026-10-19T00:00:00", "nomeUsuario": "ANA TESTE", "tma": 56, "tme": 47, "qtdeLeadsAtendidos": 17},
+    {"data": "2026-10-19T00:00:00", "nomeUsuario": "BRUNO TESTE", "tma": "00:01:30", "tme": 3725, "qtdeLeadsAtendidos": 0},
+    # Sessão de outro dia e robôs da URA: ficam de fora
+    {"data": "2026-10-18T00:00:00", "nomeUsuario": "ANA TESTE", "tma": 999, "tme": 999, "qtdeLeadsAtendidos": 50},
+    {"data": "2026-10-19T00:00:00", "nomeUsuario": "OPER VIRTUAL 1", "tma": 10, "tme": 10, "qtdeLeadsAtendidos": 265},
+    {"data": "2026-10-19T00:00:00", "nomeUsuario": "OPERADOR VIRTUAL - DTMF", "tma": 10, "tme": 10, "qtdeLeadsAtendidos": 938},
 ]
 DESEMPENHO_URA = [{"nomeUsuario": "ANA TESTE", "tma": 50, "tme": 40, "qtdeLeadsAtendidos": 17}]
 
@@ -135,7 +139,8 @@ def test_baixar_gera_csvs_no_formato_da_exportacao_manual(api_falsa, tmp_path):
     assert desempenho[2] == ["19/10/2026", "BRUNO TESTE", "SUPERVISOR DOIS", "01:02:05", "00:01:30"]
 
     assert leads == [["Data", "Operador", "Supervisor", "Leads. Atend."],
-                     ["19/10/2026", "ANA TESTE", "SUPERVISORA UM", "17"]]
+                     ["19/10/2026", "ANA TESTE", "SUPERVISORA UM", "17"],
+                     ["19/10/2026", "BRUNO TESTE", "SUPERVISOR DOIS", "0"]]
 
     assert operadores[0] == ["Cód. Usuário", "Nome", "[Campanha] Grupo Associado", "Supervisor(es)", "Status"]
     assert operadores[1] == ["1", "ANA TESTE", "[BENC] RECEPTIVO - URA", "SUPERVISORA UM", "ATIVO"]
@@ -149,17 +154,16 @@ def test_cpf_e_email_dos_operadores_nao_sao_gravados(api_falsa, tmp_path):
         assert "@" not in texto
 
 
-def test_leads_sao_pedidos_filtrando_pelo_grupo_da_ura(api_falsa, tmp_path):
+def test_leads_vem_do_desempenho_geral_do_dia_sem_filtro_de_grupo(api_falsa, tmp_path):
+    # O filtro pelo grupo RECEPTIVO - URA trazia só os operadores do grupo (346 de 2.985 leads em 20/10)
     ap.baixar(DIA, "token-falso", tmp_path)
     corpos = [corpo for caminho, corpo in api_falsa if caminho == "report/desempenhoresumido"]
-    assert {"periodoInicial": "2026-10-19T00:00:00-03:00", "periodoFinal": "2026-10-19T23:59:59-03:00",
-            "idGrupoUsuario": 50} in corpos
+    assert corpos == [{"periodoInicial": "2026-10-19T00:00:00-03:00", "periodoFinal": "2026-10-19T23:59:59-03:00"}]
 
 
-def test_sem_grupo_ura_da_erro(api_falsa, tmp_path, monkeypatch):
-    monkeypatch.setattr(ap, "GRUPO_URA", "GRUPO QUE NAO EXISTE")
-    with pytest.raises(ap.ErroArgus, match="GRUPO QUE NAO EXISTE"):
-        ap.baixar(DIA, "token-falso", tmp_path)
+def test_robos_e_sessoes_de_outro_dia_ficam_de_fora():
+    assert ap.e_robo("OPER VIRTUAL 12") and ap.e_robo("Operador Virtual - DTMF") and not ap.e_robo("OPERADORA ANA")
+    assert len(ap.linhas_do_dia(DESEMPENHO, DIA)) == 4
 
 
 def test_diagnostico_mostra_nomes_dos_campos_e_nao_os_dados(api_falsa, capsys):
@@ -268,4 +272,4 @@ def test_leads_da_ura_somam_atendimentos_de_todas_as_linhas():
 def test_bruto_grava_todas_as_colunas(api_falsa, tmp_path):
     arquivos = ap.gravar_bruto(DIA, "token-falso", tmp_path)
     assert [a.name for a in arquivos] == ["argus_bruto_geral_2026-10-19.csv", "argus_bruto_grupo50_2026-10-19.csv"]
-    assert ler(arquivos[0])[0] == ["nomeUsuario", "tma", "tme", "qtdeLeadsAtendidos"]
+    assert ler(arquivos[0])[0] == ["data", "nomeUsuario", "tma", "tme", "qtdeLeadsAtendidos"]

@@ -475,7 +475,7 @@ O `relatorio_ura.py` já usa a API sozinho. Rodar o `argus_api.py` à mão só �
 | Arquivo | Conteúdo | Endpoint usado |
 |---|---|---|
 | `argus_desempenho_AAAA-MM-DD.csv` | Data, Operador, Supervisor, TME, TMA | `report/desempenhoresumido` |
-| `argus_leads_ura_AAAA-MM-DD.csv` | Data, Operador, Supervisor, Leads. Atend. | `report/desempenhoresumido` filtrado pelo grupo RECEPTIVO - URA |
+| `argus_leads_ura_AAAA-MM-DD.csv` | Data, Operador, Supervisor, Leads. Atend. | `report/desempenhoresumido` geral do dia, sem os robôs (OPER VIRTUAL) |
 | `argus_operadores_AAAA-MM-DD.csv` | Cód., Nome, Grupo, Supervisor, Status (**sem** CPF, e-mail, login, RE e ramal) | `cmd/listarusuarios` |
 
 Os arquivos têm as mesmas colunas das exportações manuais, então o relatório funciona igual com os dois.
@@ -490,7 +490,7 @@ O Argus devolve **várias linhas por operador** (uma por sessão/grupo). O scrip
 | Operador | `nomeUsuario` | — |
 | TMA | `tempoMedioAtendimento` (segundos) | Média ponderada por `qtdeAtendimentoTotal` |
 | TME (TMO) | `tempoMedioEspera` (segundos) | Média ponderada por `qtdeAtendimentoTotal` |
-| Leads URA | `qtdeAtendimentoTotal` no grupo 7 (RECEPTIVO - URA) | Soma |
+| Leads URA | `qtdeAtendimentoTotal` de todas as sessões do dia, sem os robôs (o filtro pelo grupo RECEPTIVO - URA trazia só os operadores do grupo: 346 de 2.985 leads em 20/10/2026) | Soma |
 | Supervisor | não vem no desempenho | Buscado no cadastro de usuários |
 
 A documentação do Argus não lista os nomes dos campos. O script os reconhece pelo nome

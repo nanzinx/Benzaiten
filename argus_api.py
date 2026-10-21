@@ -36,7 +36,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from calendario import dia_util_anterior, ler_feriados
-from leitura import normalizar_nome
+from leitura import converter_data, normalizar_nome
 
 # ---------------------------------------------------------------------------
 # Configurações
@@ -66,7 +66,7 @@ CAMPOS_DESEMPENHO = {
                    "contem": ["supervisor"]},
     "tma": {"exatos": ["tma", "tempoMedioAtendimento"], "contem": ["tma"]},
     "tme": {"exatos": ["tme", "tempoMedioEspera", "tmo"], "contem": ["tme"]},
-    # No grupo RECEPTIVO - URA, cada atendimento é um lead atendido
+    # Cada atendimento do dia conta como lead atendido (conferido contra a exportação manual)
     "leads": {"exatos": ["leadsAtendidos", "qtdeLeadsAtendidos", "leadsAtend", "qtdeAtendimentoTotal"],
               "contem": ["lead", "atend"]},
     # Quantidade de atendimentos: usada como peso ao juntar as linhas do mesmo operador
@@ -419,16 +419,35 @@ def gravar_bruto(dia, token, pasta=PASTA_ENTRADA):
     return arquivos
 
 
+def e_robo(nome):
+    """Operadores virtuais (robôs da URA): não entram como operadores; o custo deles é rateado."""
+    return normalizar_nome(nome).startswith(("OPER VIRT", "OPERADOR VIRT"))
+
+
+def linhas_do_dia(registros, dia):
+    """
+    O desempenho vem em várias linhas por operador (uma por sessão). Se as linhas trazem o
+    campo "data", ficam só as do dia pedido: a consulta por período pode trazer sessões de
+    outro dia que encostam no período.
+    """
+    return [r for r in registros if "data" not in r or converter_data(r["data"]) in (None, dia)]
+
+
 def baixar(dia, token, pasta=PASTA_ENTRADA):
-    """Baixa tudo e grava os 3 CSVs. Devolve a lista de arquivos gravados."""
+    """
+    Baixa tudo e grava os 3 CSVs. Devolve a lista de arquivos gravados.
+
+    Leads: atendimentos de cada operador em TODO o desempenho do dia (sem filtro de grupo),
+    sem os robôs. Conferido contra a exportação manual de 20/10/2026: o filtro pelo grupo
+    RECEPTIVO - URA trazia só 346 de 2.985 leads, porque o Argus filtra os operadores que
+    ESTÃO no grupo, não os atendimentos da URA.
+    """
     usuarios = buscar_usuarios(token)
     supervisores = supervisores_por_operador(usuarios)
-    grupos_ura = ids_grupo_ura(buscar_grupos(token))
-    if not grupos_ura:
-        raise ErroArgus(f"Não encontrei o grupo operacional '{GRUPO_URA}' no Argus.")
-
-    desempenho = buscar_desempenho(dia, token)
-    leads = [buscar_desempenho(dia, token, id_grupo) for id_grupo in grupos_ura]
+    todos = linhas_do_dia(buscar_desempenho(dia, token), dia)
+    campo_operador = achar_campo(list(todos[0].keys()), "operador") if todos else None
+    desempenho = [r for r in todos if not (campo_operador and e_robo(r.get(campo_operador)))]
+    leads = [desempenho]
 
     pasta = Path(pasta)
     arquivos = {
