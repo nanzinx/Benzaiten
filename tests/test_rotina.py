@@ -14,7 +14,6 @@ import argus_api
 import benzaiten
 import calendario
 import escala_bases
-import ranking_vendas
 import relatorio_ura as ru
 
 DIA = date(2026, 10, 19)  # segunda-feira
@@ -42,9 +41,8 @@ def montar_entrada(pasta, dia_texto="19/10/2026", leads_ana="30"):
         ["<LIGAÇÕES SEM DERIVAÇÃO P/ OPERADOR>", "10,00", "1", "1"],
         ["ANA ALVES", "2,00", "1", "1"], ["BRUNO BRITO", "3,00", "1", "1"]])
     escrever_csv(pasta / "esteira.csv", [
-        ["Proposta", "Data/Hora", "Data Pagamento", "Etapa", "CPF", "Produto", "Agente", "Equipe", "Valor Contrato"],
-        ["1", f"{dia_texto} 10:00:00", f"{dia_texto} 15:00:00", "Pago", "CLIENTE-000001", "PORT COM REFIN",
-         "BRUNO BRITO", "SUP UM", "1000,00"]])
+        ["Data/Hora", "Etapa", "CPF", "Agente", "Valor Contrato"],
+        [f"{dia_texto} 10:00:00", "Pago", "CLIENTE-000001", "BRUNO BRITO", "1000,00"]])
 
 
 # --- Calendário ---------------------------------------------------------------
@@ -223,9 +221,6 @@ def projeto(tmp_path, monkeypatch):
     monkeypatch.setattr(escala_bases, "ARQUIVO_HISTORICO", tmp_path / "historico" / "historico_escalas.csv")
     monkeypatch.setattr(escala_bases, "PASTA_SAIDA", tmp_path / "saida")
     monkeypatch.setattr(argus_api, "ARQUIVO_TOKEN", tmp_path / "config" / "sem_token.txt")
-    monkeypatch.setattr(ranking_vendas, "PASTA_ENTRADA", tmp_path / "entrada")
-    monkeypatch.setattr(ranking_vendas, "PASTA_SAIDA", tmp_path / "saida")
-    monkeypatch.setattr(ranking_vendas, "ARQUIVO_CONFIG", tmp_path / "config" / "ranking.xlsx")
     monkeypatch.delenv("ARGUS_TOKEN", raising=False)
     return tmp_path
 
@@ -278,16 +273,8 @@ def test_relatorio_compara_pinta_e_arquiva(projeto):
 
 # --- Comando único (benzaiten.py) ---------------------------------------------------
 
-def criar_config_ranking(pasta):
-    metas = {"meta_vendedor": {"CLT": 1000, "ESTAGIO": 800}, "bonus_vendedor": {"CLT": 900, "ESTAGIO": 700},
-             "meta_supervisor": {"CLT": 5000, "ESTAGIO": 4000}, "bonus_supervisor": {"CLT": 4500, "ESTAGIO": 3500},
-             "meta_geral": {"CLT": 9000}, "meta_cartao": {"CLT": 5}, "emoji": {"CLT": "*"}}
-    ranking_vendas.salvar_config(pasta / "config" / "ranking.xlsx", metas, [], [], {})
-
-
-def test_benzaiten_faz_escala_relatorio_e_ranking(projeto, capsys):
+def test_benzaiten_faz_escala_e_relatorio(projeto, capsys):
     criar_bases(projeto)
-    criar_config_ranking(projeto)
     montar_entrada(projeto / "entrada", "19/10/2026")
 
     assert benzaiten.main(["--hoje", "20/10/2026"]) == 0  # terça: relatório de segunda 19/10
@@ -295,10 +282,7 @@ def test_benzaiten_faz_escala_relatorio_e_ranking(projeto, capsys):
     saida = capsys.readouterr().out
     assert "relatório de 19/10/2026" in saida
     assert "[ OK ] Escala de bases: sorteada" in saida
-    assert "[ OK ] Relatório da URA: gerado" in saida
-    assert "[ OK ] Ranking de vendas: gerado" in saida
-    assert "[ OK ] Arquivamento: entrada/processados/2026-10-19" in saida
-    assert (projeto / "saida" / "ranking_vendas_2026-10-19.xlsx").exists()
+    assert "[ OK ] Relatório da URA: gerado e arquivos arquivados" in saida
     assert (projeto / "saida" / "escala_2026-10-20.xlsx").exists()
     assert (projeto / "saida" / "relatorio_produtividade_2026-10-19.xlsx").exists()
     assert (projeto / "config" / "feriados.xlsx").exists() and (projeto / "config" / "metas.xlsx").exists()
@@ -324,19 +308,8 @@ def test_benzaiten_avisa_o_que_falta_e_continua_se_uma_etapa_falhar(projeto, cap
     assert benzaiten.main(["--hoje", "20/10/2026", "--nao-arquivar"]) == 1
 
     saida = capsys.readouterr().out
-    assert "PENDENTE: exportar as esteiras do Vanguard" in saida
+    assert "PENDENTE: exportar a esteira do Vanguard" in saida
     assert "PENDENTE: exportar as tarifações VENDITORE e 4NET" in saida  # só 1 arquivo
     assert "[ERRO] Escala de bases" in saida
     assert "[ OK ] Relatório da URA: gerado" in saida
-    assert "[ERRO] Ranking de vendas" in saida  # sem esteira e sem config do ranking
     assert (projeto / "entrada" / "tarifacao.csv").exists()  # --nao-arquivar
-
-
-def test_benzaiten_nao_arquiva_se_o_ranking_falhar(projeto, capsys):
-    criar_bases(projeto)
-    montar_entrada(projeto / "entrada", "19/10/2026")  # sem config/ranking.xlsx
-
-    assert benzaiten.main(["--hoje", "20/10/2026"]) == 1
-
-    assert "Arquivos NÃO arquivados porque houve erro em: Ranking de vendas" in capsys.readouterr().out
-    assert (projeto / "entrada" / "esteira.csv").exists()  # dá para rodar de novo

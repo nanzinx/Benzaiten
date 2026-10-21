@@ -6,14 +6,14 @@
 
 *“Que os dados fluam — e as vendas também.”*
 
-**Relatório de produtividade da URA · Ranking de vendas · Escala de bases do Ativo 2 · Integração com o Argus**
+**Relatório de produtividade da URA · Escala de bases do Ativo 2 · Integração com o Argus**
 
 Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-0B2A5B?logo=python&logoColor=FFE600)
 ![pandas](https://img.shields.io/badge/pandas-dados-0B2A5B?logo=pandas&logoColor=FFE600)
 ![openpyxl](https://img.shields.io/badge/openpyxl-Excel-0B2A5B)
-![pytest](https://img.shields.io/badge/testes-339%20passando-2E7D32?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/testes-318%20passando-2E7D32?logo=pytest&logoColor=white)
 ![Local](https://img.shields.io/badge/roda-100%25%20local-FFE600?labelColor=0B2A5B)
 
 </div>
@@ -38,15 +38,14 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 3. [Instalação](#-instalação-só-na-primeira-vez)
 4. [Rotina diária (resumo)](#-rotina-diária-resumo)
 5. [Relatório de produtividade da URA](#-relatório-de-produtividade-da-ura)
-6. [Ranking de contratos pagos](#-ranking-de-contratos-pagos)
-7. [API do Argus](#-api-do-argus)
-8. [Escala de bases do Ativo 2](#-escala-de-bases-do-ativo-2)
-9. [Feriados](#-feriados)
-10. [Anonimização](#-anonimização)
-11. [Privacidade e segurança](#-privacidade-e-segurança)
-12. [Problemas comuns](#-problemas-comuns)
-13. [Para quem for manter o código](#-para-quem-for-manter-o-código)
-14. [Glossário](#-glossário)
+6. [API do Argus](#-api-do-argus)
+7. [Escala de bases do Ativo 2](#-escala-de-bases-do-ativo-2)
+8. [Feriados](#-feriados)
+9. [Anonimização](#-anonimização)
+10. [Privacidade e segurança](#-privacidade-e-segurança)
+11. [Problemas comuns](#-problemas-comuns)
+12. [Para quem for manter o código](#-para-quem-for-manter-o-código)
+13. [Glossário](#-glossário)
 
 ---
 
@@ -57,11 +56,9 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 | ⛩️ `BENZAITEN.bat` | **Atalho de duplo clique**: pergunta os ausentes e roda a rotina inteira | Todo dia útil |
 | 🚀 `benzaiten.py` | **Comando único**: confere a `entrada\`, sorteia a escala, gera o relatório e arquiva os arquivos usados | Todo dia útil (o `.bat` chama) |
 | 📈 `relatorio_ura.py` | Gera o relatório de produtividade da URA (TMA, TMO, leads, custo, vendas, clientes) | Todo dia útil |
-| 🏆 `ranking_vendas.py` | Ranking de contratos pagos de vendedores e supervisores, com bônus e feedback (substitui a macro da planilha `Ranking_relatorio_com_comentarios_OFICIAL.xlsm`) | Todo dia útil |
 | 🔌 `argus_api.py` | Baixa do Argus o desempenho, os leads da URA e o cadastro de operadores | Automático (o relatório chama sozinho) |
 | 🎲 `escala_bases.py` | Sorteia as bases do INSS entre os grupos dos supervisores do Ativo 2 | Todo dia útil |
 | 🕶️ `anonimizar.py` | Remove CPFs e dados pessoais das exportações | Só antes de compartilhar arquivos |
-| 🧾 `esteira.py` | Regras comuns da esteira do Vanguard (junta as duas exportações sem contar proposta em dobro) | Usado pelos outros |
 | 📅 `calendario.py` | Feriados nacionais (calculados sozinhos) + feriados locais e o "último dia útil" | Usado pelos outros |
 | 🧰 `leitura.py` | Funções comuns (ler CSV/Excel, converter "R$ 1.234,56", datas, nomes) | Usado pelos outros |
 
@@ -72,7 +69,7 @@ flowchart LR
     subgraph Fontes
         A[("🔌 API do Argus<br/>desempenho, leads,<br/>operadores")]
         B[["📄 Tarifação<br/>VENDITORE + 4NET<br/>(exportação manual)"]]
-        C[["📄 Esteiras Vanguard<br/>andamento + pagamento<br/>(exportação manual)"]]
+        C[["📄 Esteira Vanguard<br/>(exportação manual)"]]
     end
     A -->|argus_api.py| E[/"📁 entrada/"/]
     B --> E
@@ -83,8 +80,6 @@ flowchart LR
     R --> S[["📊 saida/relatorio_produtividade_AAAA-MM-DD.xlsx"]]
     R --> T["🖥️ resumo no terminal<br/>(avisos e totais)"]
     R -->|arquiva| P[/"📁 entrada/processados/AAAA-MM-DD/"/]
-    E --> RK{{"🏆 ranking_vendas.py"}}
-    RK --> S2[["🏆 saida/ranking_vendas_AAAA-MM-DD.xlsx"]]
 ```
 
 ### Estrutura de pastas
@@ -94,8 +89,6 @@ automa-relat-rios/
 ├── ⛩️ BENZAITEN.bat          atalho de duplo clique (rotina inteira)
 ├── 🚀 benzaiten.py          comando único da rotina diária
 ├── 📈 relatorio_ura.py      relatório da URA
-├── 🏆 ranking_vendas.py     ranking de contratos pagos
-├── 🧾 esteira.py            regras comuns da esteira do Vanguard
 ├── 🔌 argus_api.py          download pela API do Argus
 ├── 🎲 escala_bases.py       sorteio das bases do Ativo 2
 ├── 🕶️ anonimizar.py         remove dados pessoais das exportações
@@ -136,7 +129,6 @@ sozinhos, em branco, na primeira execução do `benzaiten.py`.
 | 📅 Feriados | ✅ **Pronto** | Nacionais automáticos; locais em `config\feriados.xlsx` |
 | 📊 Histórico + comparação com o dia anterior | ✅ **Pronto** | Aparece a partir do segundo relatório |
 | 🚥 Metas (semáforo) | ✅ **Pronto** | Os limites em `config\metas.xlsx` precisam ser definidos pelo gestor |
-| 🏆 Ranking de vendas | ✅ **Validado** | Comparado com o relatório da planilha `Ranking_relatorio_com_comentarios_OFICIAL.xlsm` (dados de 01 a 20/10/2026): **252 valores, 0 diferenças** |
 | 🔜 Integração com o chat interno | ⚪ **Planejada** | Enviar as planilhas pelo software de chat da empresa (a validar) |
 | 🔜 Robô de esteira do Vanguard | ⚪ **Planejada** | Hoje o robô puxa só esteiras específicas; precisa ser validado com o gestor de TI |
 
@@ -226,8 +218,7 @@ Todos os testes devem aparecer como `passed`.
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │ 1. Exportar para entrada\:                                           │
-│      • Esteira do Vanguard por DATA DE ANDAMENTO                     │
-│      • Esteira do Vanguard por DATA DE PAGAMENTO                     │
+│      • Esteira do Vanguard                                           │
 │      • Tarifação VENDITORE   (Argus > Tarifação > Painel)            │
 │      • Tarifação 4NET        (Argus > Tarifação > Painel)            │
 │ 2. Dois cliques em  BENZAITEN.bat                                    │
@@ -243,8 +234,7 @@ O `BENZAITEN.bat` (ou `python benzaiten.py`) faz, em ordem:
 | 1 | **Confere a `entrada\`** | Mostra o que tem e o que falta (esteira, 2 tarifações, desempenho, leads) |
 | 2 | **Escala de bases de hoje** | Pulada se hoje for fim de semana/feriado ou se já foi sorteada |
 | 3 | **Relatório da URA** | Sempre do **dia útil anterior** (feito em 20/10 → relatório de 19/10); baixa desempenho e leads pela API do Argus |
-| 4 | **Ranking de vendas** | Contratos pagos do mês até o dia útil anterior |
-| 5 | **Arquiva a `entrada\`** | Move os arquivos usados para `entrada\processados\AAAA-MM-DD\` — **só se o relatório e o ranking deram certo** (senão, os arquivos ficam para você rodar de novo) |
+| 4 | **Arquiva a `entrada\`** | Move os arquivos usados para `entrada\processados\AAAA-MM-DD\` |
 
 Se uma etapa der erro, as outras continuam, e o **Resumo** no final mostra o que deu certo e o que falhou.
 
@@ -261,9 +251,8 @@ eles são arquivados sozinhos.
 | Com ausentes na escala | `python benzaiten.py --ausentes "FULANO, BELTRANO"` |
 | Relatório de outro dia | `python benzaiten.py --data 17/10/2026` |
 | Não arquivar a `entrada\` | `python benzaiten.py --nao-arquivar` |
-| Sem a escala | `python benzaiten.py --sem-escala` |
-| Sem o relatório da URA | `python benzaiten.py --sem-relatorio` |
-| Sem o ranking de vendas | `python benzaiten.py --sem-ranking` |
+| Só o relatório | `python benzaiten.py --sem-escala` |
+| Só a escala | `python benzaiten.py --sem-relatorio` |
 | Sem a API do Argus (tudo exportado à mão) | `python benzaiten.py --sem-api` |
 
 </details>
@@ -466,77 +455,6 @@ Todas ficam no início do `relatorio_ura.py`:
 
 ---
 
-## 🏆 Ranking de contratos pagos
-
-Substitui a macro **ATUALIZAR** da planilha `Ranking_relatorio_com_comentarios_OFICIAL.xlsm`.
-
-> [!IMPORTANT]
-> **Por que a planilha antiga parou de funcionar:** a macro lia a aba `DADOS_BRUTOS` pela
-> **posição** das colunas (J = Etapa, S = Produto, T = Agente, U = Equipe, Y = Valor Contrato).
-> A esteira nova do Vanguard ganhou a coluna **Codigo** (depois do CPF), e tudo andou uma coluna
-> para a direita: a macro passou a ler o Órgão como Produto, o Produto como Agente e o Saldo Devedor
-> como Valor. O `ranking_vendas.py` lê as colunas **pelo nome**, então novas colunas não quebram nada.
-
-### Primeira vez: importar as metas e as listas
-
-Copie a planilha antiga para `config\` e rode:
-
-```powershell
-python ranking_vendas.py --importar-xlsm config\Ranking_relatorio_com_comentarios_OFICIAL.xlsm
-```
-
-Isso cria `config\ranking.xlsx` com as metas da aba **GUIA** e as listas da aba **AUXILIAR**
-(a planilha antiga não é alterada e as macros não são executadas):
-
-| Aba de `config\ranking.xlsx` | Conteúdo |
-|---|---|
-| **Parametros** | Metas do vendedor, do supervisor, para o bônus, meta geral, meta de cartão e emoji — colunas **CLT** e **Estágio** |
-| **Vendedores CLT** | Vendedores CLT (todos os outros usam as metas de Estágio). **Mantenha atualizado!** |
-| **Supervisores CLT** | Equipes cujo supervisor usa as metas CLT |
-| **Nomes das equipes** | Troca o nome da equipe no ranking (ex.: `FULANO - URA` → `FULANO DE TAL`) |
-
-Os vendedores **ativos** vêm do mesmo cadastro do relatório da URA (`config\operadores.xlsx`).
-
-### Todo dia
-
-Exporte para `entrada\` as **duas** esteiras do Vanguard — por **data de andamento** e por
-**data de pagamento** — e rode o `BENZAITEN.bat` (ou `python ranking_vendas.py`).
-As duas esteiras são juntadas e **cada proposta conta uma vez só**, mesmo que esteja nas duas.
-
-Resultado: `saida\ranking_vendas_AAAA-MM-DD.xlsx`, com os dados do mês até o **dia útil anterior**.
-
-### Como cada coluna é calculada (mesmas regras da macro)
-
-| Coluna | Cálculo |
-|---|---|
-| **PORTABILIDADE** | Soma do Valor Contrato das propostas **Pago** com Data Pagamento no mês — sem margem livre e cartão |
-| **PROJETANDO** | Portabilidade ÷ **esperado para a data**. Esperado = meta ÷ dias úteis do mês × dias úteis até a data (feriados descontados) |
-| **POTENCIAL DE GANHOS** | (bônus da faixa + 1% do valor pago em margem/cartão + R$ 1.000 na faixa mais alta) × 1,2 |
-| **MARGEM/CARTÃO** | Quantidade de propostas pagas de margem livre ou cartão |
-| **ANDAMENTO** | Soma das propostas em **Andamento** — sem margem livre e cartão |
-| **PORT. PROJEÇÃO** | Portabilidade + metade do andamento (a outra metade costuma reprovar) |
-| **ELEGÍVEL AO BÔNUS** | **SIM** se a portabilidade atingiu a meta para o bônus |
-| **FEEDBACK** | Frase gerada **no computador**, a partir dos números (sem internet) |
-
-- **Ordem:** pelo PROJETANDO (cada um contra a própria meta, CLT ou estágio). Empate exato divide a posição.
-- **Cores:** azul a partir de 100% do esperado, verde a partir de 70%; 🏆 a partir de 133%.
-- **Supervisores:** agrupados pela coluna **Equipe** da esteira, com as metas de supervisor.
-- **Total Geral:** soma dos supervisores; o potencial e os elegíveis somam as duas tabelas.
-- As faixas e porcentagens do bônus ficam no início do `ranking_vendas.py` (`FAIXAS_VENDEDOR`, `FAIXAS_SUPERVISOR`).
-- Etapas que não entram (ex.: **Pendente**) aparecem em aviso. Para contar alguma como andamento,
-  inclua em `ETAPAS_ANDAMENTO`.
-
-A aba **Conferência** mostra os dias úteis, o esperado de cada meta, os arquivos lidos, quantas
-propostas entraram (pagas, em andamento, repetidas, fora do mês) e os agentes ignorados por não
-estarem ativos.
-
-> [!NOTE]
-> A planilha antiga gerava o **FEEDBACK** enviando os nomes e o ranking para a OpenAI (macro
-> `GERAR_FRASES`). O `ranking_vendas.py` **não envia nada para fora**: o feedback é montado localmente,
-> com frases objetivas e respeitosas.
-
----
-
 ## 🔌 API do Argus
 
 O `relatorio_ura.py` já usa a API sozinho. Rodar o `argus_api.py` à mão só é útil para conferir ou depurar.
@@ -670,7 +588,7 @@ As cópias ficam em `anonimizados\`, com o mesmo nome. **Os originais não são 
 
 | Arquivo | O que acontece |
 |---|---|
-| Esteira do Vanguard | CPF vira `CLIENTE-000001` e o número da proposta vira `PROPOSTA-000001` (o mesmo valor recebe sempre o mesmo código, inclusive nas duas esteiras; assim a contagem de clientes e a junção das esteiras continuam certas). Nome do cliente, benefício, salário, contrato, CPF do agente e observações ficam **vazios** |
+| Esteira do Vanguard | CPF vira `CLIENTE-000001` (o mesmo CPF recebe sempre o mesmo código, então a contagem de clientes continua certa). Nome do cliente, benefício, salário, proposta, contrato, CPF do agente e observações ficam **vazios** |
 | Operadores do Argus | CPF, e-mail, login, RE e ramal ficam **vazios** |
 | Desempenho, leads, tarifação | Copiados sem mudança (não têm dados de clientes) |
 
@@ -687,7 +605,6 @@ Se aparecer **ATENÇÃO**, abra o arquivo e confira a coluna indicada antes de c
 | Originais intactos | Todos os scripts gravam arquivos **novos**; nenhum altera as exportações de entrada (o arquivamento só as **move** para `entrada\processados\`) |
 | Token do Argus | Fica só em `config\argus_token.txt` (ou na variável `ARGUS_TOKEN`). Nunca é exibido |
 | Dados de clientes | O relatório usa o CPF só para contar clientes únicos; nenhum CPF aparece na saída |
-| Nada de IA externa | O feedback do ranking é gerado no computador; a macro antiga que enviava dados à OpenAI não é usada |
 | Testes | Usam apenas dados **inventados**, criados dentro dos próprios testes |
 | Rede | A única conexão externa é com a API do Argus, para **baixar** dados. Nada é enviado |
 
@@ -816,7 +733,6 @@ python -m pytest -k sorteio # só os testes com "sorteio" no nome
 | `tests/test_anonimizar.py` | Remoção de CPF/e-mail, codificações, conferência final, leitura de CSV |
 | `tests/test_argus_api.py` | API simulada: datas, campos, junção das linhas, SSL, token |
 | `tests/test_relatorio_ura.py` | Conversão de valores, ex-colaboradores, apelidos, totais da tarifação, rateio, vendas, ordem |
-| `tests/test_ranking_vendas.py` | Junção das esteiras, dias úteis, faixas de bônus, CLT × estágio, supervisores, feedback, importação da planilha e a esteira com coluna a mais |
 | `tests/test_rotina.py` | Feriados e Páscoa, histórico, comparação, metas, arquivamento e o comando único `benzaiten.py` |
 
 ### ✅ Roteiro para fechar as pendências 🟡
