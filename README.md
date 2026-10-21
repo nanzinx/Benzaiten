@@ -58,7 +58,7 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 | 🚀 `benzaiten.py` | **Comando único**: confere a `entrada\`, sorteia a escala, gera o relatório e arquiva os arquivos usados | Todo dia útil (o `.bat` chama) |
 | 📈 `relatorio_ura.py` | Gera o relatório de produtividade da URA (TMA, TMO, leads, custo, vendas, clientes) | Todo dia útil |
 | 🔌 `argus_api.py` | Baixa do Argus o desempenho, os leads da URA e o cadastro de operadores | Automático (o relatório chama sozinho) |
-| 🎲 `escala_bases.py` | Sorteia as bases do INSS entre os grupos dos supervisores do Ativo 2 | Todo dia útil |
+| 🎲 `escala_bases.py` | Distribui as bases do INSS em rodízio entre os grupos dos supervisores do Ativo 2 | Todo dia útil |
 | 📇 `formatar_mailing.py` | Converte qualquer planilha no CSV de mailing `CPF;BENEFICIO;NOME;TELEFONE1..5` (mesmo formato do BENHERMES) | Quando chegar uma base nova |
 | 🕶️ `anonimizar.py` | Remove CPFs e dados pessoais das exportações | Só antes de compartilhar arquivos |
 | 📅 `calendario.py` | Feriados nacionais (calculados sozinhos) + feriados locais e o "último dia útil" | Usado pelos outros |
@@ -509,7 +509,7 @@ Quando isso acontece, o script tenta de novo num modo compatível, **sem deixar 
 
 ## 🎲 Escala de bases do Ativo 2
 
-Sorteia as bases (lotes/notas do INSS) entre os grupos dos supervisores, como o botão
+Distribui as bases (lotes/notas do INSS) em rodízio entre os grupos dos supervisores, como o botão
 "Sortear bases de hoje" da planilha `Escala_Bases_Ativo2.xlsm`.
 
 ### Primeira vez: importar a planilha antiga
@@ -537,20 +537,30 @@ A planilha `.xlsm` **não é alterada** e as macros **não são executadas**.
 - 📊 `saida\escala_AAAA-MM-DD.xlsx`: a escala do dia e, numa segunda aba, os últimos 10 sorteios;
 - 🗂️ `historico\historico_escalas.csv`: uma linha por base por dia (abre no Excel).
 
-### Regras do sorteio
+### Regras do rodízio
+
+A escala é um **rodízio**: a cada sorteio, cada pessoa anda **uma base para frente**, na ordem do cadastro,
+e volta para a primeira depois da última. Assim ninguém repete uma base antes de passar por todas.
+
+```
+            NOTA 0   NOTA 1   NOTA 2   NOTA 3
+21/10       ANA      BRUNO    CARLA    DIEGO
+22/10       DIEGO    ANA      BRUNO    CARLA     <- cada um andou uma base
+23/10       CARLA    DIEGO    ANA      BRUNO
+```
 
 | Regra | Como funciona |
 |---|---|
 | 🎯 Responsável | Cada base recebe **um** responsável |
-| 🔁 Sem repetição | Ninguém repete a mesma base dos **últimos 2 sorteios**. Conta sorteios, não dias: na segunda-feira, olha sexta e quinta |
+| 🔁 Ponto de partida | O último sorteio **completo** do histórico (todas as bases preenchidas, ninguém repetido). Sem histórico, começa pela ordem do cadastro |
+| 📅 Dias | Conta sorteios, não dias do calendário: de sexta para segunda é um passo só |
+| 🚫 Ausentes | Ficam fora. A base deles vai para quem está com **menos bases** (de preferência quem não teve essa base no sorteio anterior). Quando a pessoa volta, ela **retoma a posição dela** no rodízio, como se não tivesse faltado. Nome digitado errado gera erro |
 | ➖ Menos pessoas que bases | Algumas pessoas ficam com mais de uma base, com diferença máxima de 1 entre elas |
-| ➕ Mais pessoas que bases | Alguém fica sem base e aparece um aviso |
-| 🧩 Sem combinação possível | A regra é afrouxada (só o último sorteio, depois nenhum) e aparece um aviso |
-| 🚫 Ausentes | Ficam fora do sorteio. Nome digitado errado gera erro, para não passar despercebido |
+| ➕ Mais pessoas que bases | Quem fica sem base também entra no rodízio: cada dia é a vez de um |
+| 🆕 Pessoa nova no cadastro | Entra no fim da roda, logo antes de quem estava na primeira base |
 
-> [!TIP]
-> Para mudar a regra dos 2 sorteios, altere `JANELA_SORTEIOS` no início do `escala_bases.py`.
-> Com 4 bases e 4 pessoas, o valor 3 deixaria **só uma combinação possível**, e o sorteio viraria um rodízio fixo.
+> [!NOTE]
+> Sortear de novo o mesmo dia dá **o mesmo resultado** (o rodízio não é aleatório).
 
 ### Incluir ou tirar bases e pessoas
 
@@ -777,12 +787,12 @@ são pintados. As cores valem só para as linhas dos operadores.
 ```powershell
 python -m pytest            # todos
 python -m pytest -q         # resumido
-python -m pytest -k sorteio # só os testes com "sorteio" no nome
+python -m pytest -k escala  # só os testes da escala
 ```
 
 | Arquivo | O que testa |
 |---|---|
-| `tests/test_escala_bases.py` | Regras do sorteio (200 sementes), ausências, histórico, importação da `.xlsm` |
+| `tests/test_escala_bases.py` | Rodízio (ciclo completo, ausentes que retomam a posição, pessoa nova, menos/mais pessoas que bases), histórico, importação da `.xlsm` |
 | `tests/test_anonimizar.py` | Remoção de CPF/e-mail, codificações, conferência final, leitura de CSV |
 | `tests/test_argus_api.py` | API simulada: datas, campos, junção das linhas, SSL, token |
 | `tests/test_relatorio_ura.py` | Conversão de valores, ex-colaboradores, apelidos, totais da tarifação, rateio, vendas, ordem |

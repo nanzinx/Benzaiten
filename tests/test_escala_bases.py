@@ -5,7 +5,6 @@ Todos os dados aqui são FICTÍCIOS e criados dentro do próprio teste,
 numa pasta temporária. Nada é lido de config/ ou historico/.
 """
 
-import random
 from collections import Counter
 from datetime import date
 
@@ -57,55 +56,95 @@ def test_ler_cadastro_inexistente_explica_o_que_fazer(tmp_path):
         eb.ler_cadastro(tmp_path / "nao_existe.xlsx")
 
 
-# --- Regras do sorteio ------------------------------------------------------
+# --- Regras do rodízio ------------------------------------------------------
 
-def test_cada_base_tem_um_responsavel_e_ninguem_repete_no_dia():
-    escolha, _ = eb.sortear(BASES, PESSOAS, [], date(2026, 10, 20), rng=random.Random(1))
+NOTAS = ["INSS - LOTE - 1 - NOTA 0", "INSS - LOTE - 1 - NOTA 1", "INSS - LOTE - 1 - NOTA 2", "INSS - LOTE - 1 - NOTA 3"]
 
-    assert list(escolha) == BASES                      # todas as bases, na ordem do cadastro
-    assert sorted(escolha.values()) == sorted(PESSOAS)  # cada pessoa com exatamente uma base
-
-
-@pytest.mark.parametrize("semente", range(200))
-def test_ninguem_repete_base_dos_ultimos_2_sorteios(semente):
-    escolha, janela = eb.sortear(BASES, PESSOAS, HISTORICO, date(2026, 10, 20), rng=random.Random(semente))
-
-    assert janela == 2
-    for base, pessoa in escolha.items():
-        anteriores = [r["responsavel"] for r in HISTORICO if r["base"] == base]
-        assert pessoa not in anteriores
+# O caso que motivou a mudança: no sorteio aleatório, quem tinha a NOTA 0 no dia 19
+# pegou a NOTA 0 de novo no dia 21 (a planilha só olhava o dia anterior).
+CASO_REAL = historico_de(
+    (date(2026, 10, 16), dict(zip(NOTAS, ["BRUNO", "DIEGO", "CARLA", "ANA"]))),
+    (date(2026, 10, 19), dict(zip(NOTAS, ["ANA", "BRUNO", "DIEGO", "CARLA"]))),
+    (date(2026, 10, 20), dict(zip(NOTAS, ["DIEGO", "CARLA", "ANA", "BRUNO"]))),
+    (date(2026, 10, 21), dict(zip(NOTAS, ["ANA", "BRUNO", "CARLA", "DIEGO"]))),
+)
 
 
-def test_sorteio_e_aleatorio_e_nao_um_rodizio_fixo():
-    resultados = {
-        tuple(eb.sortear(BASES, PESSOAS, HISTORICO, date(2026, 10, 20), rng=random.Random(s))[0].values())
-        for s in range(100)
-    }
-    assert len(resultados) > 1
+def test_cada_pessoa_anda_uma_base_para_frente():
+    # 21/10: ANA na NOTA 0, BRUNO na 1, CARLA na 2, DIEGO na 3
+    escolha, avisos = eb.rodizio(NOTAS, PESSOAS, CASO_REAL, date(2026, 10, 22))
+
+    assert list(escolha) == NOTAS                        # todas as bases, na ordem do cadastro
+    assert escolha == dict(zip(NOTAS, ["DIEGO", "ANA", "BRUNO", "CARLA"]))
+    assert avisos == []
 
 
-def test_janela_conta_sorteios_e_nao_dias_do_calendario():
-    # De sexta (16/10) para segunda (19/10) passam 3 dias, mas é o sorteio anterior
-    sexta = historico_de((date(2026, 10, 16), {"BASE A": "ANA"}))
-    anteriores = eb.sorteios_anteriores(sexta, date(2026, 10, 19), 1)
-    assert anteriores == [{"BASE A": "ANA"}]
+def test_ninguem_repete_base_antes_de_passar_por_todas():
+    historico, dia = list(CASO_REAL), date(2026, 10, 22)
+    vistas = {p: [] for p in PESSOAS}
+    for _ in range(8):                                   # dois ciclos completos
+        escolha, _ = eb.rodizio(NOTAS, PESSOAS, historico, dia)
+        historico += [registro(dia, b, p) for b, p in escolha.items()]
+        for base, pessoa in escolha.items():
+            vistas[pessoa].append(base)
+        dia = date.fromordinal(dia.toordinal() + 1)
+    for pessoa, sequencia in vistas.items():
+        assert sorted(sequencia[:4]) == NOTAS, pessoa    # cada ciclo passa por todas as bases
+        assert sequencia[4:] == sequencia[:4], pessoa    # e o ciclo seguinte repete a mesma ordem
 
 
-def test_sorteio_do_mesmo_dia_ou_futuro_nao_conta_como_anterior():
-    hist = historico_de(
-        (date(2026, 10, 20), {"BASE A": "ANA"}),
-        (date(2026, 10, 21), {"BASE A": "BRUNO"}),
-    )
-    assert eb.sorteios_anteriores(hist, date(2026, 10, 20), 2) == []
+def test_rodizio_conta_sorteios_e_nao_dias_do_calendario():
+    # De sexta (16/10) para segunda (19/10) é só um passo
+    sexta = historico_de((date(2026, 10, 16), dict(zip(BASES, PESSOAS))))
+    escolha, _ = eb.rodizio(BASES, PESSOAS, sexta, date(2026, 10, 19))
+    assert escolha == dict(zip(BASES, ["DIEGO", "ANA", "BRUNO", "CARLA"]))
+
+
+def test_sortear_de_novo_o_mesmo_dia_da_o_mesmo_resultado():
+    # O dia do sorteio e os dias futuros não contam como ponto de partida
+    primeira, _ = eb.rodizio(NOTAS, PESSOAS, CASO_REAL[:12], date(2026, 10, 21))
+    segunda, _ = eb.rodizio(NOTAS, PESSOAS, CASO_REAL[:12], date(2026, 10, 21))
+    assert primeira == segunda == dict(zip(NOTAS, ["BRUNO", "DIEGO", "CARLA", "ANA"]))
+
+
+def test_sem_historico_comeca_pela_ordem_do_cadastro():
+    escolha, _ = eb.rodizio(BASES, PESSOAS, [], date(2026, 10, 20))
+    assert escolha == dict(zip(BASES, PESSOAS))
 
 
 def test_comparacao_com_historico_ignora_acentos_e_maiusculas():
-    hist = historico_de((date(2026, 10, 19), {"base a": "Ána"}))
-    assert eb.repete_base({"BASE A": "ANA"}, eb.sorteios_anteriores(hist, date(2026, 10, 20), 1))
+    hist = historico_de((date(2026, 10, 19), {"base a": "Ána", "base b": "bruno", "base c": "CARLA", "base d": "diego"}))
+    escolha, _ = eb.rodizio(BASES, PESSOAS, hist, date(2026, 10, 20))
+    assert escolha == dict(zip(BASES, ["DIEGO", "ANA", "BRUNO", "CARLA"]))
+
+
+def test_ausente_retoma_sua_posicao_quando_volta():
+    # 22/10: ANA falta. A base dela (NOTA 1) vai para alguém; no dia 23 ela volta
+    # exatamente onde estaria (NOTA 2), como se não tivesse faltado.
+    escolha, avisos = eb.rodizio(NOTAS, PESSOAS, CASO_REAL, date(2026, 10, 22), ausentes=["ana"])
+    assert "ANA" not in escolha.values()
+    assert escolha[NOTAS[1]] in {"BRUNO", "CARLA", "DIEGO"}
+    assert escolha[NOTAS[1]] != "BRUNO"                  # BRUNO teve a NOTA 1 no dia 21
+    assert "ANA está ausente" in avisos[0]
+
+    historico = CASO_REAL + [registro(date(2026, 10, 22), b, p) for b, p in escolha.items()]
+    volta, _ = eb.rodizio(NOTAS, PESSOAS, historico, date(2026, 10, 23))
+    assert volta == dict(zip(NOTAS, ["CARLA", "DIEGO", "ANA", "BRUNO"]))
+
+
+def test_base_do_ausente_vai_para_quem_esta_com_menos_bases():
+    escolha, _ = eb.rodizio(NOTAS, PESSOAS, CASO_REAL, date(2026, 10, 22), ausentes=["ANA", "BRUNO"])
+    assert sorted(Counter(escolha.values()).values()) == [2, 2]
+
+
+def test_pessoa_nova_entra_no_fim_da_roda():
+    escolha, _ = eb.rodizio(NOTAS, PESSOAS + ["ELISA"], CASO_REAL, date(2026, 10, 22))
+    # Roda: ANA, BRUNO, CARLA, DIEGO, ELISA. Quem vem antes da NOTA 0 agora é a ELISA
+    assert escolha == dict(zip(NOTAS, ["ELISA", "ANA", "BRUNO", "CARLA"]))
 
 
 def test_menos_pessoas_que_bases_distribui_sem_diferenca_maior_que_1():
-    escolha, _ = eb.sortear(BASES, ["ANA", "BRUNO", "CARLA"], [], date(2026, 10, 20), rng=random.Random(3))
+    escolha, _ = eb.rodizio(BASES, ["ANA", "BRUNO", "CARLA"], [], date(2026, 10, 20))
 
     quantidade = Counter(escolha.values())
     assert len(escolha) == 4                      # nenhuma base sem responsável
@@ -113,41 +152,29 @@ def test_menos_pessoas_que_bases_distribui_sem_diferenca_maior_que_1():
     assert max(quantidade.values()) - min(quantidade.values()) <= 1
 
 
-def test_com_2_pessoas_para_4_bases_ainda_respeita_o_dia_anterior():
-    # Ontem: ANA com A e C, BRUNO com B e D. Hoje a única saída é inverter.
+def test_com_2_pessoas_para_4_bases_alterna_a_cada_dia():
     hist = historico_de((date(2026, 10, 19), {"BASE A": "ANA", "BASE B": "BRUNO", "BASE C": "ANA", "BASE D": "BRUNO"}))
-    for semente in range(50):
-        escolha, janela = eb.sortear(BASES, ["ANA", "BRUNO"], hist, date(2026, 10, 20), rng=random.Random(semente))
-        assert janela >= 1
-        assert escolha == {"BASE A": "BRUNO", "BASE B": "ANA", "BASE C": "BRUNO", "BASE D": "ANA"}
+    escolha, _ = eb.rodizio(BASES, ["ANA", "BRUNO"], hist, date(2026, 10, 20))
+    assert escolha == {"BASE A": "BRUNO", "BASE B": "ANA", "BASE C": "BRUNO", "BASE D": "ANA"}
 
 
-def test_mais_pessoas_que_bases_alguem_fica_sem_base():
+def test_mais_pessoas_que_bases_quem_fica_sem_base_tambem_roda():
     pessoas = PESSOAS + ["ELISA"]
-    escolha, _ = eb.sortear(BASES, pessoas, [], date(2026, 10, 20), rng=random.Random(4))
-
-    assert len(escolha) == 4
-    assert len(set(escolha.values())) == 4        # ninguém com duas bases
-    assert len(set(pessoas) - set(escolha.values())) == 1
-
-
-def test_sem_combinacao_possivel_reduz_a_janela():
-    # Com 2 bases e 2 pessoas, quem já teve as duas bases não tem opção na janela de 2
-    hist = historico_de(
-        (date(2026, 10, 16), {"BASE A": "ANA", "BASE B": "BRUNO"}),
-        (date(2026, 10, 19), {"BASE A": "BRUNO", "BASE B": "ANA"}),
-    )
-    escolha, janela = eb.sortear(["BASE A", "BASE B"], ["ANA", "BRUNO"], hist, date(2026, 10, 20), rng=random.Random(0))
-
-    assert janela == 1
-    assert escolha == {"BASE A": "ANA", "BASE B": "BRUNO"}  # única opção sem repetir o dia anterior
+    historico, dia, sem_base = [], date(2026, 10, 20), []
+    for _ in range(5):
+        escolha, _ = eb.rodizio(BASES, pessoas, historico, dia)
+        assert len(set(escolha.values())) == 4    # ninguém com duas bases
+        sem_base += list(set(pessoas) - set(escolha.values()))
+        historico += [registro(dia, b, p) for b, p in escolha.items()]
+        dia = date.fromordinal(dia.toordinal() + 1)
+    assert sorted(sem_base) == sorted(pessoas)    # cada um fica de fora uma vez a cada 5 dias
 
 
 def test_sem_bases_ou_sem_pessoas_da_erro():
     with pytest.raises(ValueError):
-        eb.sortear([], PESSOAS, [], date(2026, 10, 20))
+        eb.rodizio([], PESSOAS, [], date(2026, 10, 20))
     with pytest.raises(ValueError):
-        eb.sortear(BASES, [], [], date(2026, 10, 20))
+        eb.rodizio(BASES, PESSOAS, [], date(2026, 10, 20), ausentes=PESSOAS)
 
 
 # --- Ausências --------------------------------------------------------------

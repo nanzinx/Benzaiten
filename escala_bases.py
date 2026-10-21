@@ -1,17 +1,21 @@
 """
 Escala diária de bases do Ativo 2.
 
-Sorteia as bases (lotes/notas do INSS) entre as pessoas cadastradas
-(o grupo operacional de cada supervisor), do mesmo jeito que o botão
+Distribui as bases (lotes/notas do INSS) entre as pessoas cadastradas
+(o grupo operacional de cada supervisor) em RODÍZIO, do mesmo jeito que o botão
 "Sortear bases de hoje" da planilha Escala_Bases_Ativo2.xlsm.
 
-Regras do sorteio:
-  - Cada base recebe um responsável.
+Regras do rodízio:
+  - A cada sorteio, cada pessoa anda UMA base para frente, na ordem do cadastro
+    (NOTA 0 -> NOTA 1 -> NOTA 2 -> NOTA 3 -> volta para a NOTA 0).
+    Assim ninguém repete uma base antes de passar por todas.
+  - O ponto de partida é o último sorteio completo do histórico (todas as bases
+    preenchidas, sem ninguém repetido). Sem histórico, começa pela ordem do cadastro.
+  - Pessoas ausentes no dia ficam fora; a base delas vai para quem estiver com menos
+    bases (de preferência quem não teve essa base no sorteio anterior). Quando a pessoa
+    volta, ela retoma a posição dela no rodízio, como se não tivesse faltado.
   - Se houver menos pessoas que bases, algumas pessoas ficam com mais de uma base.
-  - Se houver mais pessoas que bases, algumas ficam sem base (aparece um aviso).
-  - Ninguém repete a mesma base dos últimos JANELA_SORTEIOS sorteios.
-    Se não existir nenhuma combinação possível, a janela diminui e um aviso aparece.
-  - Pessoas ausentes no dia ficam fora do sorteio.
+  - Se houver mais pessoas que bases, quem fica sem base também entra no rodízio.
 
 Como usar (no terminal, dentro da pasta do projeto):
   python escala_bases.py                          -> sorteia hoje
@@ -23,7 +27,6 @@ Como usar (no terminal, dentro da pasta do projeto):
 
 import argparse
 import csv
-import random
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -43,14 +46,6 @@ PASTA_PROJETO = Path(__file__).resolve().parent
 ARQUIVO_CADASTRO = PASTA_PROJETO / "config" / "bases.xlsx"
 ARQUIVO_HISTORICO = PASTA_PROJETO / "historico" / "historico_escalas.csv"
 PASTA_SAIDA = PASTA_PROJETO / "saida"
-
-# Quantos sorteios anteriores são olhados para evitar repetir a mesma base.
-# Com 4 bases e 4 pessoas, 2 ainda deixa o sorteio aleatório;
-# 3 deixaria só uma combinação possível (vira rodízio fixo).
-JANELA_SORTEIOS = 2
-
-# Quantas vezes embaralhar antes de desistir de uma janela (igual à macro)
-TENTATIVAS = 1000
 
 # Cores da empresa (as mesmas da planilha .xlsm)
 AZUL = "0A2F6B"
@@ -142,67 +137,79 @@ def salvar_historico(registros, caminho=ARQUIVO_HISTORICO):
 # Sorteio
 # ---------------------------------------------------------------------------
 
-def sorteios_anteriores(historico, data_sorteio, quantidade):
+def ponto_de_partida(historico, bases, pessoas, data_sorteio):
     """
-    Devolve os últimos `quantidade` sorteios ANTES da data informada.
+    Descobre a ordem do rodízio e quantos passos andar até a data do sorteio.
 
-    Cada sorteio é um dicionário {base_normalizada: pessoa_normalizada}.
-    Conta sorteios registrados (não dias do calendário), então o fim de
-    semana não "apaga" a sexta-feira.
+    Procura, do mais recente para o mais antigo, o último sorteio ANTES da data que
+    esteja completo: todas as bases preenchidas e ninguém repetido (quando há pessoas
+    suficientes). Dias com ausência não servem de partida, porque alguém cobriu outra base.
+
+    Devolve (roda, passos):
+      roda   = pessoas na ordem em que estavam nas bases do sorteio de partida,
+               seguidas de quem não estava nele (pessoa nova no cadastro);
+      passos = quantos sorteios separam a partida da data (1 = o dia seguinte).
+    Sem sorteio de partida: roda = ordem do cadastro e passos = 0.
     """
+    oficiais = {normalizar_nome(p): p for p in pessoas}
     datas = sorted({r["data"] for r in historico if r["data"] < data_sorteio}, reverse=True)
-    datas = datas[:quantidade]
-    anteriores = []
-    for d in datas:
-        anteriores.append({
-            normalizar_nome(r["base"]): normalizar_nome(r["responsavel"])
-            for r in historico if r["data"] == d
-        })
-    return anteriores
+    for passos, d in enumerate(datas, start=1):
+        do_dia = {normalizar_nome(r["base"]): normalizar_nome(r["responsavel"]) for r in historico if r["data"] == d}
+        nomes = [do_dia.get(normalizar_nome(b), "") for b in bases]
+        completo = all(nomes) and (len(set(nomes)) == len(nomes) or len(pessoas) < len(bases))
+        if not completo:
+            continue
+        # Quem saiu do cadastro sai da roda; quem entrou vai para o fim dela
+        roda = list(dict.fromkeys(oficiais[n] for n in nomes if n in oficiais))
+        roda += [p for p in pessoas if p not in roda]
+        return roda, passos
+    return list(pessoas), 0
 
 
-def repete_base(escolha, anteriores):
-    """True se alguém pegou a mesma base em algum dos sorteios anteriores."""
-    for base, pessoa in escolha.items():
-        for sorteio in anteriores:
-            if sorteio.get(normalizar_nome(base)) == normalizar_nome(pessoa):
-                return True
-    return False
-
-
-def sortear(bases, pessoas, historico, data_sorteio, janela=JANELA_SORTEIOS, rng=None):
+def rodizio(bases, pessoas, historico, data_sorteio, ausentes=()):
     """
-    Faz o sorteio e devolve (escolha, janela_usada).
+    Monta a escala do dia em rodízio e devolve (escolha, avisos).
 
     escolha = {base: pessoa}, na ordem das bases do cadastro.
-    janela_usada = quantos sorteios anteriores foram respeitados
-                   (menor que `janela` quando não havia combinação possível).
-
-    `rng` serve só para os testes repetirem o mesmo resultado;
-    no uso normal fica None e o sorteio é aleatório de verdade.
+    O histórico informado não deve conter a própria data (quem chama decide se substitui).
     """
     if not bases:
         raise ValueError("Nenhuma base cadastrada.")
-    if not pessoas:
+    fora = {normalizar_nome(a) for a in ausentes}
+    presentes = [p for p in pessoas if normalizar_nome(p) not in fora]
+    if not presentes:
         raise ValueError("Nenhuma pessoa disponível para o sorteio.")
-    rng = rng or random.Random()
 
-    # Tenta com a janela completa; se não der, diminui até 0 (sem restrição)
-    for janela_atual in range(janela, -1, -1):
-        anteriores = sorteios_anteriores(historico, data_sorteio, janela_atual)
-        for _ in range(TENTATIVAS):
-            embaralhadas = list(pessoas)
-            rng.shuffle(embaralhadas)
-            # Monta uma fila com uma vaga por base. Se faltar gente, volta para o
-            # começo da lista, então ninguém fica com mais de 1 base a mais que outro.
-            fila = [embaralhadas[i % len(embaralhadas)] for i in range(len(bases))]
-            # Embaralha a fila de novo para quem tem 2 bases não pegar sempre as mesmas posições
-            rng.shuffle(fila)
-            escolha = dict(zip(bases, fila))
-            if not repete_base(escolha, anteriores):
-                return escolha, janela_atual
-    # Só chega aqui se nem sem restrição funcionar, o que não deve acontecer
-    raise RuntimeError("Não foi possível fazer o sorteio.")
+    roda, passos = ponto_de_partida(historico, bases, pessoas, data_sorteio)
+    m = len(roda)
+    # Cada passo leva cada pessoa para a base seguinte
+    plano = [roda[(j - passos) % m] for j in range(len(bases))]
+
+    # Base de quem faltou: para quem está com menos bases; de preferência quem não teve
+    # essa base no sorteio anterior; depois, quem vem logo atrás no rodízio
+    anteriores = sorted({r["data"] for r in historico if r["data"] < data_sorteio})
+    ontem = {normalizar_nome(r["base"]): normalizar_nome(r["responsavel"])
+             for r in historico if anteriores and r["data"] == anteriores[-1]}
+    escolha = {b: (p if p in presentes else None) for b, p in zip(bases, plano)}
+    contagem = {p: list(escolha.values()).count(p) for p in presentes}
+    avisos = []
+    for base, previsto in zip(bases, plano):
+        if escolha[base]:
+            continue
+        posicao = roda.index(previsto)
+        substituto = min(presentes, key=lambda p: (
+            contagem[p],
+            ontem.get(normalizar_nome(base)) == normalizar_nome(p),
+            (roda.index(p) - posicao) % m,
+        ))
+        escolha[base] = substituto
+        contagem[substituto] += 1
+        avisos.append(f"{previsto} está ausente: {base} ficou com {substituto}.")
+
+    repetidos = [f"{p} ({b})" for b, p in escolha.items() if ontem.get(normalizar_nome(b)) == normalizar_nome(p)]
+    if repetidos:
+        avisos.append(f"por causa das ausências, repetiu a base do sorteio anterior: {', '.join(repetidos)}.")
+    return escolha, avisos
 
 
 def aplicar_ausencias(pessoas, ausentes):
@@ -227,7 +234,7 @@ def aplicar_ausencias(pessoas, ausentes):
 # Planilha de saída
 # ---------------------------------------------------------------------------
 
-def gerar_planilha(escolha, data_sorteio, ausentes, janela_usada, historico, caminho):
+def gerar_planilha(escolha, data_sorteio, ausentes, historico, caminho):
     """Cria saida/escala_AAAA-MM-DD.xlsx com a escala do dia e os últimos sorteios."""
     azul = PatternFill("solid", fgColor=AZUL)
     amarelo = PatternFill("solid", fgColor=AMARELO)
@@ -265,7 +272,7 @@ def gerar_planilha(escolha, data_sorteio, ausentes, janela_usada, historico, cam
 
     ws.append([])
     ws.append([f"Ausentes: {', '.join(ausentes) if ausentes else 'nenhum'}"])
-    ws.append([f"Regra: ninguém repetiu a base dos últimos {janela_usada} sorteio(s)."])
+    ws.append(["Regra: rodízio — cada pessoa anda uma base para frente a cada sorteio."])
     ws.column_dimensions["A"].width = 38
     ws.column_dimensions["B"].width = 22
 
@@ -408,13 +415,8 @@ def main(argumentos=None):
     if len(disponiveis) < len(bases):
         avisos.append(f"{len(disponiveis)} pessoa(s) para {len(bases)} base(s): alguém fica com mais de uma base.")
 
-    escolha, janela_usada = sortear(bases, disponiveis, historico, data_sorteio)
-
-    if janela_usada == 0:
-        avisos.append("não havia como evitar que alguém repetisse a base do sorteio anterior.")
-    elif janela_usada < JANELA_SORTEIOS:
-        avisos.append(f"não havia combinação sem repetir base nos últimos {JANELA_SORTEIOS} sorteios; "
-                      f"só o último foi respeitado.")
+    escolha, avisos_rodizio = rodizio(bases, pessoas, historico, data_sorteio, ausentes)
+    avisos += avisos_rodizio
     sem_base = [p for p in disponiveis if p not in escolha.values()]
     if sem_base:
         avisos.append(f"mais pessoas que bases; sem base hoje: {', '.join(sem_base)}. "
@@ -425,7 +427,7 @@ def main(argumentos=None):
         historico.append({"data": data_sorteio, "base": base, "responsavel": pessoa})
     salvar_historico(historico, ARQUIVO_HISTORICO)
     saida = PASTA_SAIDA / f"escala_{data_sorteio:%Y-%m-%d}.xlsx"
-    gerar_planilha(escolha, data_sorteio, ausentes, janela_usada, historico, saida)
+    gerar_planilha(escolha, data_sorteio, ausentes, historico, saida)
 
     print()
     largura = max(len(b) for b in escolha)
