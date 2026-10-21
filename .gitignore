@@ -14,6 +14,7 @@ historico/
 *.xlsm
 *.xls
 *.csv
+*.tsv
 # ...exceto os dados FICTÍCIOS usados nos testes
 !tests/dados_ficticios/**
 

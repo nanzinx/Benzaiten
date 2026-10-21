@@ -40,12 +40,13 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 5. [Relatório de produtividade da URA](#-relatório-de-produtividade-da-ura)
 6. [API do Argus](#-api-do-argus)
 7. [Escala de bases do Ativo 2](#-escala-de-bases-do-ativo-2)
-8. [Feriados](#-feriados)
-9. [Anonimização](#-anonimização)
-10. [Privacidade e segurança](#-privacidade-e-segurança)
-11. [Problemas comuns](#-problemas-comuns)
-12. [Para quem for manter o código](#-para-quem-for-manter-o-código)
-13. [Glossário](#-glossário)
+8. [Formatador de mailing (BENHERMES)](#-formatador-de-mailing-benhermes)
+9. [Feriados](#-feriados)
+10. [Anonimização](#-anonimização)
+11. [Privacidade e segurança](#-privacidade-e-segurança)
+12. [Problemas comuns](#-problemas-comuns)
+13. [Para quem for manter o código](#-para-quem-for-manter-o-código)
+14. [Glossário](#-glossário)
 
 ---
 
@@ -58,6 +59,7 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 | 📈 `relatorio_ura.py` | Gera o relatório de produtividade da URA (TMA, TMO, leads, custo, vendas, clientes) | Todo dia útil |
 | 🔌 `argus_api.py` | Baixa do Argus o desempenho, os leads da URA e o cadastro de operadores | Automático (o relatório chama sozinho) |
 | 🎲 `escala_bases.py` | Sorteia as bases do INSS entre os grupos dos supervisores do Ativo 2 | Todo dia útil |
+| 📇 `formatar_mailing.py` | Converte qualquer planilha no CSV de mailing `CPF;BENEFICIO;NOME;TELEFONE1..5` (mesmo formato do BENHERMES) | Quando chegar uma base nova |
 | 🕶️ `anonimizar.py` | Remove CPFs e dados pessoais das exportações | Só antes de compartilhar arquivos |
 | 📅 `calendario.py` | Feriados nacionais (calculados sozinhos) + feriados locais e o "último dia útil" | Usado pelos outros |
 | 🧰 `leitura.py` | Funções comuns (ler CSV/Excel, converter "R$ 1.234,56", datas, nomes) | Usado pelos outros |
@@ -91,6 +93,7 @@ automa-relat-rios/
 ├── 📈 relatorio_ura.py      relatório da URA
 ├── 🔌 argus_api.py          download pela API do Argus
 ├── 🎲 escala_bases.py       sorteio das bases do Ativo 2
+├── 📇 formatar_mailing.py   planilha -> CSV de mailing (formato BENHERMES)
 ├── 🕶️ anonimizar.py         remove dados pessoais das exportações
 ├── 📅 calendario.py         feriados e "último dia útil"
 ├── 🧰 leitura.py            funções comuns de leitura e conversão
@@ -99,6 +102,7 @@ automa-relat-rios/
 │
 │   ── pastas criadas no seu computador (NUNCA vão para o GitHub) ──
 ├── 📁 entrada/              exportações do dia (Argus e Vanguard)
+│   ├── mailing/             planilhas para o formatador de mailing
 │   └── processados/AAAA-MM-DD/   arquivos já usados, guardados por dia
 ├── 📁 anonimizados/         cópias sem dados de clientes
 ├── 📁 config/               operadores.xlsx, bases.xlsx, metas.xlsx,
@@ -559,6 +563,55 @@ Abra `config\bases.xlsx`:
 
 ---
 
+## 📇 Formatador de mailing (BENHERMES)
+
+Versão em Python do **Formatador de Planilha para CSV** do
+[BENHERMES](https://github.com/ProfetaSaru/BENHERMES) (`src/utils/spreadsheetFormatter.ts`).
+Segue as mesmas regras e gera **o mesmo arquivo**, só que roda pelo terminal, junto com o resto
+do BENZAITEN, e formata várias planilhas de uma vez.
+
+```
+CPF;BENEFICIO;NOME;TELEFONE1;TELEFONE2;TELEFONE3;TELEFONE4;TELEFONE5
+12345678901;1112223334;FULANO DE TAL;;;;;
+```
+
+### Como rodar
+
+```powershell
+# formata tudo o que estiver em entrada\mailing\  ->  saida\mailing\<nome>_formatado.csv
+python formatar_mailing.py
+
+# um arquivo específico
+python formatar_mailing.py "C:\Downloads\Base Outubro.xlsx"
+
+# escolher a aba ou as colunas quando não forem achadas sozinhas
+python formatar_mailing.py base.xlsx --aba "Clientes"
+python formatar_mailing.py base.csv --cpf "Documento" --beneficio "NB" --nome "Pessoa"
+```
+
+### O que ele faz
+
+| Etapa | Regra (igual ao BENHERMES) |
+|---|---|
+| Formatos | `.xlsx`, `.xls`, `.csv`, `.tsv`, `.txt`; o separador do texto (`;` `,` tab `\|`) é descoberto sozinho |
+| Cabeçalho | Procurado nas **10 primeiras linhas**: pode haver título ou linhas em branco antes |
+| Colunas | CPF (`cpf`, `documento`, `doc`…), Benefício (`beneficio`, `nb`, `matricula`…), Nome (`nome`, `cliente`, `titular`…) |
+| Valores | Copiados como estão; texto com `;`, aspas ou quebra de linha vai entre aspas |
+| Telefones | As 5 colunas saem **vazias**, para preenchimento |
+| Arquivo | UTF-8 com BOM e quebra de linha do Windows: abre direto no Excel com os acentos certos |
+
+**Melhorias em relação ao original:**
+- O nome **exato** do cabeçalho tem preferência: numa planilha com `Desbloqueio NB` e `Beneficio`,
+  o Benefício é a coluna `Beneficio` (no original, a primeira que *contivesse* "nb" vencia).
+- A mesma coluna nunca é usada para dois campos.
+- CPF que o Excel deixou com 9 ou 10 dígitos (zero à esquerda perdido) é **completado com zeros**.
+  Use `--manter-cpf` para não mexer.
+
+> 🔒 O arquivo de entrada **não é alterado** e nada sai do computador. Como a saída tem CPFs reais,
+> `entrada\mailing\` e `saida\mailing\` ficam protegidas pelo `.gitignore`, como as outras pastas.
+
+---
+
 ## 📅 Feriados
 
 O "último dia útil" (usado pelo relatório e pela API do Argus) e a escala consideram os feriados:
@@ -733,6 +786,7 @@ python -m pytest -k sorteio # só os testes com "sorteio" no nome
 | `tests/test_anonimizar.py` | Remoção de CPF/e-mail, codificações, conferência final, leitura de CSV |
 | `tests/test_argus_api.py` | API simulada: datas, campos, junção das linhas, SSL, token |
 | `tests/test_relatorio_ura.py` | Conversão de valores, ex-colaboradores, apelidos, totais da tarifação, rateio, vendas, ordem |
+| `tests/test_formatar_mailing.py` | Formatador de mailing: cabeçalho abaixo de título, detecção de colunas, separadores, aspas, CPF com zero, abas |
 | `tests/test_rotina.py` | Feriados e Páscoa, histórico, comparação, metas, arquivamento e o comando único `benzaiten.py` |
 
 ### ✅ Roteiro para fechar as pendências 🟡
