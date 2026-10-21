@@ -15,8 +15,19 @@ Scripts em Python que substituem as rotinas diárias feitas à mão no Excel.
 ![openpyxl](https://img.shields.io/badge/openpyxl-Excel-0B2A5B)
 ![pytest](https://img.shields.io/badge/testes-318%20passando-2E7D32?logo=pytest&logoColor=white)
 ![Local](https://img.shields.io/badge/roda-100%25%20local-FFE600?labelColor=0B2A5B)
+![Status](https://img.shields.io/badge/status-reserva%20%28congelado%29-8D6E63)
 
 </div>
+
+> [!IMPORTANT]
+> **Projeto congelado como reserva.** Desde outubro de 2026 o sistema principal é o
+> **[BenHermes](https://benhermes.vercel.app)** ([repositório](https://github.com/ProfetaSaru/BENHERMES)),
+> que roda no navegador e já faz tudo o que está aqui: escala de bases com rodízio, relatório da URA
+> com setas e cores, download pela API do Argus e formatador de mailing.
+>
+> O BENZAITEN continua funcionando e com os testes passando, mas **não recebe novas funções**.
+> Use-o só como plano B, se o BenHermes ou a Vercel estiverem fora do ar. Correções de regra
+> (ex.: cálculo de leads) são feitas primeiro no BenHermes.
 
 > **Por que BENZAITEN?** Na mitologia japonesa, **Benzaiten** (弁財天) é uma das Sete Divindades
 > da Sorte: a deusa de **tudo o que flui**, como a água, as palavras, o conhecimento e a **riqueza**.
